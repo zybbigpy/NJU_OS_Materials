@@ -1,0 +1,93 @@
+
+<!-- saved from url=(0044)http://114.212.87.156:5000/wiki/OS2019_Shell -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="stylesheet" href="./终端和Shell_files/bootstrap.min.css">
+    <link rel="stylesheet" href="./终端和Shell_files/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="./终端和Shell_files/katex.min.css">
+    <link rel="stylesheet" href="./终端和Shell_files/wiki.css">
+    <link rel="stylesheet" href="./终端和Shell_files/codehilite.css">
+
+    <script src="./终端和Shell_files/katex.min.js.下载"></script>
+    <script src="./终端和Shell_files/jquery.min.js.下载"></script>
+    
+    
+    
+
+    <title>终端和Shell</title>
+  <style type="text/css">
+:root .content > a > .topline,
+:root .ch[onclick="ga(this,event)"]
+{ display: none !important; }</style></head>
+  <body>
+   
+   
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-header">
+    <div class="navbar-brand">
+      <a href="http://114.212.87.156:5000/wiki">Yanyan's Wiki</a>
+    </div>
+  </div>
+  <div class="collapse navbar-collapse">
+    <ul class="nav navbar-nav navbar-left"> 
+      <li><a href="http://114.212.87.156:5000/wiki/OS2019"><img class="textimg" src="./终端和Shell_files/logo-n.png"> 操作系统(2019)</a></li>
+      <li><a href="http://114.212.87.156:5000/wiki/ICS_NJU"><img class="textimg" height="18px" src="./终端和Shell_files/ics.png"> 加入我们</a></li>
+    </ul>
+  </div>
+</div>
+
+<center>
+  <div class="article-container">
+    <div class="article">
+      <h1 id="shell">终端和Shell</h1>
+<div class="fenced fenced-blue">
+<h4 id="_1">本讲阅读材料</h4>
+<p><a href="https://www.gnu.org/software/libc/manual/html_node/Job-Control.html">GNU libc job control文档</a>。其中“implementing a shell”小节包含了你需要了解关于Shell的全部。</p>
+</div>
+<h2 id="_2">终端</h2>
+<p>我们已经非常熟悉UNIX Shell (bash/zsh)的使用了——不过它到底是怎么实现的呢？首先，Shell作为操作系统的“壳”和用户交互，就需要接收用户输入，并且把输出交给用户。在1970年代，这是通过“字符终端”实现的，并且一直延续至今。</p>
+<p></p><center><img alt="" src="./终端和Shell_files/terminal.jpg" width="500px"></center><p></p>
+<p>从编程的角度，everything is a file，终端也是——可以对终端设备文件执行read/write系统调用，从中读出数据或写入数据。至于如何控制终端，请有兴趣的同学STFW。</p>
+<div class="fenced fenced-green">
+<h4 id="_3">为什么？</h4>
+<p>如何解释以下终端的行为？</p>
+<ul>
+<li>按下backspace后，屏幕上的字符会“消失”，但在Vim的normal mode里，backspace却只是把光标向前移动。</li>
+<li>在大部分时候，我们都可以编辑一行的内容，按下回车后才会把字符给read()系统调用；但Vim却可以直接立即捕捉到按键。</li>
+<li>按下Ctrl-C后，程序会退出，但Vim不会退出(并且在底部打印一行提示信息)。有趣的是，在2017年Stackoverflow已经<a href="https://stackoverflow.blog/2017/05/23/stack-overflow-helping-one-million-developers-exit-vim/">帮助了1,000,000人退出Vim</a>。</li>
+<li>有时候会发出讨厌的(鸽子般的)声音。</li>
+<li>为什么命令有时候能打印出彩色，重定向后颜色又没了？</li>
+</ul>
+</div>
+<h2 id="shell_1">Shell</h2>
+<p>Shell的实现请参考本讲阅读材料。</p>
+    </div>
+  </div>
+</center>
+
+<div class="footer-bottom">
+  <center>
+    <div class="copyright"> © 2019 Yanyan Jiang, All rights reserved </div>
+  </center>
+</div>
+
+<script>
+  $("math").each(function() {
+    var tex = $(this).text();
+    var html = katex.renderToString(tex, {
+      throwOnError: false
+    });
+    $(this).replaceWith(html);
+  });
+</script>
+
+    <script>
+      $("math").each(function() {
+        var tex = $(this).text();
+        var html = katex.renderToString(tex, {
+          throwOnError: false
+        });
+        $(this).replaceWith(html);
+      });
+    </script>
+  
+</body></html>
