@@ -1,0 +1,125 @@
+
+<!-- saved from url=(0050)http://114.212.87.156:5000/wiki/OS2019_Microkernel -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="stylesheet" href="./微内核操作系统_files/bootstrap.min.css">
+    <link rel="stylesheet" href="./微内核操作系统_files/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="./微内核操作系统_files/katex.min.css">
+    <link rel="stylesheet" href="./微内核操作系统_files/wiki.css">
+    <link rel="stylesheet" href="./微内核操作系统_files/codehilite.css">
+
+    <script src="./微内核操作系统_files/katex.min.js.下载"></script>
+    <script src="./微内核操作系统_files/jquery.min.js.下载"></script>
+    
+    
+    
+
+    <title>微内核操作系统</title>
+  <style type="text/css">
+:root .content > a > .topline,
+:root .ch[onclick="ga(this,event)"]
+{ display: none !important; }</style></head>
+  <body>
+   
+   
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-header">
+    <div class="navbar-brand">
+      <a href="http://114.212.87.156:5000/wiki">Yanyan's Wiki</a>
+    </div>
+  </div>
+  <div class="collapse navbar-collapse">
+    <ul class="nav navbar-nav navbar-left"> 
+      <li><a href="http://114.212.87.156:5000/wiki/OS2019"><img class="textimg" src="./微内核操作系统_files/logo-n.png"> 操作系统(2019)</a></li>
+      <li><a href="http://114.212.87.156:5000/wiki/ICS_NJU"><img class="textimg" height="18px" src="./微内核操作系统_files/ics.png"> 加入我们</a></li>
+    </ul>
+  </div>
+</div>
+
+<center>
+  <div class="article-container">
+    <div class="article">
+      <h1 id="_1">微内核操作系统</h1>
+<div class="fenced fenced-blue">
+<h4 id="_2">本讲阅读材料</h4>
+<p>Kevin Elphinstone and Gernot Heiser. <a href="http://sigops.org/s/conferences/sosp/2013/papers/p133-elphinstone.pdf">From L3 to seL4: What have we learnt in 20 years of L4 microkernels?</a>. In <em>Proc. of SOSP</em>, 2013.</p>
+</div>
+<h2 id="_3">操作系统实验：缺陷</h2>
+<p>在我们的OSLab系列中，我们自己在硬件上实现了一个操作系统内核。内核代码(中断处理、设备驱动、文件系统、系统调用……)都能访问操作系统内核的整个地址空间，这使得我们共享操作系统中的数据非常容易，可以定义：</p>
+<div class="codehilite"><pre><span></span><span class="k">struct</span> <span class="n">task</span> <span class="p">{</span>
+  <span class="kt">uint32_t</span> <span class="n">status</span><span class="p">;</span>
+  <span class="p">...</span>
+  <span class="k">struct</span> <span class="n">file</span> <span class="o">*</span><span class="n">fildes</span><span class="p">[</span><span class="n">NOFILE</span><span class="p">];</span>
+<span class="p">};</span>
+</pre></div>
+
+
+<p>然而，没人敢说自己的代码没有bug。不仅是你的代码有bug，Linux Kernel也不例外。内核里的bug的危害可比一般应用程序大多了——轻则导致运行环境崩溃，重则产生安全漏洞，使得系统受到重大的经济损失。</p>
+<div class="fenced fenced-green">
+<h4 id="bugs">思考题：如何给操作系统内核找bugs？</h4>
+<p>嗯，就当是在测试你的OSLab就好了。静态分析可以用于有效地找到安全漏洞、错误的代码使用模式等；动态分析则更容易揭示功能性的bugs。</p>
+<p>一个有趣的Linux内核测试工具是<a href="https://github.com/google/syzkaller">syzkaller</a>，有兴趣的同学可以学习一下它的实现。</p>
+</div>
+<h2 id="bugs_1">减少Bugs的影响</h2>
+<p>之前课上已经讲过，文件系统可以实现在用户空间。我们完全可以用一个“服务器进程”来管理某个设备上的文件系统，只要这个服务器进程拥有对该设备的访问权限。于是，一个<code>open()</code>系统调用的流程就是：</p>
+<ul>
+<li>当前进程P向服务器进程发送一个消息，包含了<code>open</code>的参数；</li>
+<li>P阻塞等待服务器进程的消息；</li>
+<li>服务器进程接收到消息，检查P是否具有相应的打开权限(因为服务器具有设备的访问权限，它可以把设备上的数据结构正确解读为文件系统)，如果成功，分配文件描述符；</li>
+<li>把文件描述符以消息的形式发送给P。</li>
+</ul>
+<p>如此一来，即便文件系统中有bug，它也不能越权访问其他内核数据。Linux/MacOS等系统中已有这样的实现(FUSE)：</p>
+<p></p><center><img alt="" src="./微内核操作系统_files/fuse.png" width="400px"></center><p></p>
+<h2 id="_4">微内核</h2>
+<p>因此，操作系统内核(系统调用API和它们行为的集合)也不必要实现成与POSIX API相对应。只需要提供一些必要的操作系统对象和它们的操作，例如：</p>
+<ul>
+<li>对象访问的接口(handles)和权限管理</li>
+<li>处理器的虚拟化，例如进程和线程</li>
+<li>进程/线程通信的API，例如channels, sockets, fifos, prots, events</li>
+<li>内存的虚拟化</li>
+<li>设备的访问 (memory-mapped I/O可以用虚拟内存实现)</li>
+</ul>
+<p>其他所有操作系统的实现都可以推到用户空间，这就是微内核(microkernel)。</p>
+<p></p><center><img alt="" src="./微内核操作系统_files/microkernel.png" width="640px"></center><p></p>
+<p>当然，这样的设计不可能没有代价——代价就是原本直接实现的系统调用，统统都需要使用IPC。这在消息很大的时候(例如要传送一个write系统调用的数据)需要相当大的代价，并且实现某些操作系统功能会变得相对复杂(例如<code>time</code>)。并不是没有办法解决这些问题，但为此依然有过很多<a href="https://en.wikipedia.org/wiki/Tanenbaum%E2%80%93Torvalds_debate">争辩</a>。</p>
+<h3 id="_5">为什么微内核重要？</h3>
+<p>我们实在没办法保证很多内核模块的正确性——设备驱动、文件系统……都是逻辑异常复杂、难以充分测试的代码。当它们和并发、奇怪的workload、恶意的黑客放在一起时，事情就远没有那么简单了。一个user-after-free也可以引发<a href="https://capsule8.com/blog/uafs-in-linux-kernel-modules-cve-2019-8912-cve-2019-8956/">非常严重的后果</a>。</p>
+<p>微内核提供了一个新的途径——我们可以设计一个非常安全的微内核，也许性能不如Linux，但极度不容易被黑客攻破。seL4做到了一个非常了不起的成就：完成<a href="https://en.wikipedia.org/wiki/Formal_verification">形式化验证</a>。seL4提供的保障有：</p>
+<blockquote>
+<p>… In short, the implementation is proved to be bug-free (see below). This also implies a number of other properties, such as freedom from buffer overflows, null pointer exceptions, use-after-free, etc.</p>
+<p>There is a further proof that the binary code which executes on the hardware is a correct translation of the C code...</p>
+</blockquote>
+<p>一方面Linux内核隔三差五就被来自世界各地的研究者找到bugs，另一方面seL4却能保证自己没有这样的bugs。对于飞机导弹火箭汽车等系统来说，这样的正确性却是至关重要的。正是Windows操作系统中的漏洞使<a href="https://en.wikipedia.org/wiki/Stuxnet">伊朗的离心机瘫痪</a>。</p>
+<p>更cool的是，seL4之上还可以运行不可信的操作系统，同时保证一小部分软件的可靠。<a href="https://cacm.acm.org/magazines/2018/10/231372-formally-verified-software-in-the-real-world/fulltext">Foremally verified software in the real world</a>给我们提供了如下的例子：</p>
+<p></p><center><img alt="" src="./微内核操作系统_files/sel4-case.jpg" width="640px"></center><p></p>
+<p>微内核作为一个可信的抽象层，也许将会成为未来所有计算机系统的一部分。Google的Fucshia操作系统也使用了微内核的架构。</p>
+    </div>
+  </div>
+</center>
+
+<div class="footer-bottom">
+  <center>
+    <div class="copyright"> © 2019 Yanyan Jiang, All rights reserved </div>
+  </center>
+</div>
+
+<script>
+  $("math").each(function() {
+    var tex = $(this).text();
+    var html = katex.renderToString(tex, {
+      throwOnError: false
+    });
+    $(this).replaceWith(html);
+  });
+</script>
+
+    <script>
+      $("math").each(function() {
+        var tex = $(this).text();
+        var html = katex.renderToString(tex, {
+          throwOnError: false
+        });
+        $(this).replaceWith(html);
+      });
+    </script>
+  
+</body></html>

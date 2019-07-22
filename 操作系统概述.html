@@ -1,0 +1,138 @@
+
+<!-- saved from url=(0044)http://114.212.87.156:5000/wiki/OS2019_Intro -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="stylesheet" href="./操作系统概述_files/bootstrap.min.css">
+    <link rel="stylesheet" href="./操作系统概述_files/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="./操作系统概述_files/katex.min.css">
+    <link rel="stylesheet" href="./操作系统概述_files/wiki.css">
+    <link rel="stylesheet" href="./操作系统概述_files/codehilite.css">
+
+    <script src="./操作系统概述_files/katex.min.js.下载"></script>
+    <script src="./操作系统概述_files/jquery.min.js.下载"></script>
+    
+    
+    
+
+    <title>操作系统概述</title>
+  </head>
+  <body>
+   
+   
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-header">
+    <div class="navbar-brand">
+      <a href="http://114.212.87.156:5000/wiki">Yanyan's Wiki</a>
+    </div>
+  </div>
+  <div class="collapse navbar-collapse">
+    <ul class="nav navbar-nav navbar-left"> 
+      <li><a href="http://114.212.87.156:5000/wiki/OS2019"><img class="textimg" src="./操作系统概述_files/logo-n.png"> 操作系统(2019)</a></li>
+      <li><a href="http://114.212.87.156:5000/wiki/ICS_NJU"><img class="textimg" height="18px" src="./操作系统概述_files/ics.png"> 加入我们</a></li>
+    </ul>
+  </div>
+</div>
+
+<center>
+  <div class="article-container">
+    <div class="article">
+      <h1 id="_1">操作系统概述</h1>
+<div class="fenced fenced-blue">
+<h4 id="_2">本讲阅读材料</h4>
+<p><a href="http://pages.cs.wisc.edu/~remzi/OSTEP/">教科书 (Operating Systems: Three Easy Pieces, OSTEP)</a>第1-2章。</p>
+</div>
+<p>操作系统：统一管理和调度计算机硬件中的各类资源、为各类应用程序和系统软件提供服务。类似的定义可以在一万本参考书上看到，这里就不多说了。</p>
+<p>一份很好的材料是Operating Systems: Three Easy Pieces参考书的<a href="http://pages.cs.wisc.edu/~remzi/OSTEP/intro.pdf">2.6节：Some History</a>，讲述了操作系统发展的故事。</p>
+<h2 id="_3">控制程序的程序</h2>
+<p>当我们“用”一台计算机的时候，我们总是需要管理系统中运行的程序——配置；启动；等待；观察……而这些程序又需要访问计算机中的硬件资源：磁盘、终端(屏幕和键盘)等等。为了解决这两个问题，尤其是在计算机的资源非常有限(只有很少的内存，因此无法将多个程序同时加载到内存中)：</p>
+<ul>
+<li>提出一个语言<a href="https://en.wikipedia.org/wiki/Job_Control_Language">Job Control Language</a> (JCL)去描述程序应该怎样被执行。</li>
+<li>把计算机系统中的共享资源抽象成对象(例如磁盘抽象成文件/目录的集合)，提供库函数给应用程序调用。</li>
+</ul>
+<p>这就是早期的操作系统：操作(operate)任务(jobs)的系统(system)。DOS (Disk Operating System)就是在磁盘出现后相应的批处理系统，例如DOS/360 (1964年)。我们所熟知的MS-DOS (仙剑奇侠传原本运行的平台)则是微软很久以后的产品了——它可以看作是一个命令行脚本解释器，加上一组<a href="https://en.wikipedia.org/wiki/MS-DOS_API">基于中断的操作系统API</a>，称为MS-DOS API。</p>
+<div class="fenced fenced-blue">
+<h4 id="api">操作系统API</h4>
+<p>为了让操作系统上的程序能更好地管理计算机系统中的硬件资源，对资源作出适当的抽象是十分必要的。除了运行程序(管理处理器和内存资源)外，设备管理也是操作系统需要解决的重要问题。</p>
+<p>试想：如果操作系统里的程序都获得对磁盘的控制权，当两个程序都想向磁盘中写入数据时，它们怎么相互协调保证写入的位置不冲突？操作系统采用把磁盘抽象成文件和目录的方法，让运行在操作系统上的程序访问文件，然后由文件系统的实现决定磁盘上实际的数据格式。</p>
+</div>
+<p>虽然看起来很简陋(连分时多任务都不行)，但MS-DOS API涵盖了输入输出设备控制(键盘、屏幕等)、文件管理、程序执行、内存分配等，从有趣的游戏到编辑程序都是没问题的。</p>
+<p></p><center><p></p>
+<p><img alt="" src="./操作系统概述_files/qb.jpg" width="400px"></p>
+<p>(Quick Basic IDE)</p>
+<p><img alt="" src="./操作系统概述_files/ra95.jpg" width="400px"></p>
+<p>(Red Alert 95, 运行在320 x 200 x 256的彩色模式)</p>
+<p></p></center><p></p>
+<h2 id="_4">更快的处理器、更大的存储</h2>
+<p>当我们的内存多到可以同时容纳多个程序的时候，让多个程序同时驻留内存共享处理器就成为很自然的需求，例如有两个程序：</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">program_A</span><span class="p">()</span> <span class="p">{</span>
+  <span class="k">while</span> <span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">compute_A</span><span class="p">();</span>   <span class="c1">// 100ms</span>
+    <span class="n">wait_disk</span><span class="p">();</span>   <span class="c1">// 100ms</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">program_B</span><span class="p">()</span> <span class="p">{</span>
+  <span class="k">while</span> <span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">compute_B</span><span class="p">();</span>    <span class="c1">// 100ms</span>
+    <span class="n">wait_printer</span><span class="p">();</span> <span class="c1">// 100ms</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>在内存不足的时代，我们只能按照A → B或者B → A的顺序执行，因为把程序从磁盘载入内存非常费时。如果在处理器上切换程序执行的代价变小，我们就可以按照以下流程执行程序：</p>
+<div class="codehilite"><pre><span></span><span class="n">A</span><span class="o">:</span> <span class="n">compute_A</span><span class="o">()</span>
+<span class="c1">// 在磁盘I/O指令发出后，不再忙等待，而是切换到B执行</span>
+<span class="n">B</span><span class="o">:</span> <span class="n">compute_B</span><span class="o">()</span>
+<span class="n">A</span><span class="o">:</span> <span class="n">wait_disk</span><span class="o">();</span>    <span class="c1">// 磁盘已经就绪，立即完成</span>
+<span class="n">B</span><span class="o">:</span> <span class="n">wait_printer</span><span class="o">();</span> <span class="c1">// 立即完成</span>
+</pre></div>
+
+
+<p>如果我们把所有运行的程序都加载到内存，并且定时在运行的时间切换，就是今天的分时操作系统。为了更好地管理进程，操作系统借助了众多处理器提供的机制：</p>
+<ul>
+<li>中断机制，在时钟中断到来时进程切换实现处理器的分时共享。</li>
+<li>虚拟存储，使程序在运行时只能访问虚拟地址空间中的数据，造成自己独占计算机系统运行的“假像” (虚拟化)。</li>
+<li>保护机制，使程序在运行时不能任意访问系统资源(例如I/O设备)，越权访问引发异常，从而系统中有缺陷的进程不会使整个系统崩溃——一个例子是死循环。如果在关闭中断的情况下死循环，整个系统将被卡死，但因为应用程序无权管理中断，所以操作系统总能在中断到来时被“强制”运行，调度其他程序执行。</li>
+</ul>
+<h2 id="_5">操作系统：设计与实现</h2>
+<p>操作系统课程关注两个问题：</p>
+<ul>
+<li>操作系统的机制应该如何设计(程序、库函数、操作系统中的对象、系统调用等规范)，以更好地提供日益增长的应用需求？</li>
+<li>操作系统应当如何适当地借助硬件提供的机制，高效、正确地实现各个功能？</li>
+</ul>
+<div class="fenced fenced-green">
+<h4 id="_6">思考题：操作系统需要支持什么程序？</h4>
+<p>操作系统如果只是支持一些相对简单的需求，MS-DOS API多多少少也够用了。但你能举出一些更复杂的例子，它们需要“特别”的API实现？例如打印进程树、调试器、追踪器(trace)、虚拟机、数据库……。</p>
+</div>
+<p>这门课将会为大家揭开这两个问题的答案。课程教学主要关注API的设计：操作系统中应当包含哪些对象以及如何管理它们。在实验中，大家会实际使用这些API完成具体的任务，并且在计算机硬件上实现这些API。</p>
+    </div>
+  </div>
+</center>
+
+<div class="footer-bottom">
+  <center>
+    <div class="copyright"> © 2019 Yanyan Jiang, All rights reserved </div>
+  </center>
+</div>
+
+<script>
+  $("math").each(function() {
+    var tex = $(this).text();
+    var html = katex.renderToString(tex, {
+      throwOnError: false
+    });
+    $(this).replaceWith(html);
+  });
+</script>
+
+    <script>
+      $("math").each(function() {
+        var tex = $(this).text();
+        var html = katex.renderToString(tex, {
+          throwOnError: false
+        });
+        $(this).replaceWith(html);
+      });
+    </script>
+  
+</body></html>

@@ -1,0 +1,126 @@
+
+<!-- saved from url=(0047)http://114.212.87.156:5000/wiki/OS2019_Hardware -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="stylesheet" href="./硬件眼中的操作系统_files/bootstrap.min.css">
+    <link rel="stylesheet" href="./硬件眼中的操作系统_files/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="./硬件眼中的操作系统_files/katex.min.css">
+    <link rel="stylesheet" href="./硬件眼中的操作系统_files/wiki.css">
+    <link rel="stylesheet" href="./硬件眼中的操作系统_files/codehilite.css">
+
+    <script src="./硬件眼中的操作系统_files/katex.min.js.下载"></script>
+    <script src="./硬件眼中的操作系统_files/jquery.min.js.下载"></script>
+    
+    
+    
+
+    <title>硬件眼中的操作系统</title>
+  <style type="text/css">
+:root .content > a > .topline
+{ display: none !important; }</style></head>
+  <body>
+   
+   
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-header">
+    <div class="navbar-brand">
+      <a href="http://114.212.87.156:5000/wiki">Yanyan's Wiki</a>
+    </div>
+  </div>
+  <div class="collapse navbar-collapse">
+    <ul class="nav navbar-nav navbar-left"> 
+      <li><a href="http://114.212.87.156:5000/wiki/OS2019"><img class="textimg" src="./硬件眼中的操作系统_files/logo-n.png"> 操作系统(2019)</a></li>
+      <li><a href="http://114.212.87.156:5000/wiki/ICS_NJU"><img class="textimg" height="18px" src="./硬件眼中的操作系统_files/ics.png"> 加入我们</a></li>
+    </ul>
+  </div>
+</div>
+
+<center>
+  <div class="article-container">
+    <div class="article">
+      <h1 id="_1">硬件眼中的操作系统</h1>
+<p>在硬件眼里，操作系统不过是一个C程序。AbstractMachine为我们提供了对硬件的封装——AM API就好像是“虚拟”的硬件指令，能够帮助我们实现必须借助系统指令才能完成的功能。硬件只是指令的忠实执行者——仅此而已。</p>
+<p>使用<code>make -nB</code>选项可以：</p>
+<ul>
+<li>强制编译所有目标</li>
+<li>只打印命令，而不实际执行它们</li>
+</ul>
+<p>这就可以看到AbstractMachine从.c文件开始，编译AM自身的代码、库函数、链接，直到一个可执行镜像的创建的全过程，正如上课时演示的那样。之后，镜像会在QEMU中运行，参考<a href="http://localhost:5000/wiki/AM_Intro">bare-metal编程</a>中加载器的部分。bootloader加载ELF文件后跳转到entry执行，此后启动代码执行必要的初始化(中断、设备、堆区等)，然后跳转到<code>main</code>执行。</p>
+<p>这个过程和Linux内核编译、运行的过程非常类似——只不过编译Linux内核前首先需要经过一系列的配置，而我们的系统非常简单，直接使用默认配置即可；此外Linux内核通常是使用更复杂的加载器(例如Grub或U-Boot)加载的。如果你对我们的Makefile已经完全理解，你理解Linux内核的编译过程(包括镜像生成)也不会有任何问题了。</p>
+<h2 id="_2">管理多个处理器</h2>
+<p>硬件的多个处理器和进程中的线程十分类似：它们启动后共享整个物理地址空间，但拥有独立的寄存器(包括独立的页目录寄存器CR3，因此每个处理器可以“看到”完全不同的虚拟地址空间)。此外，每个处理器有独立的IDT，因此独立地响应中断——这意味着在一个处理器上关闭中断，并不能使其他处理器的中断关闭。</p>
+<div class="fenced fenced-green">
+<h4 id="clistop-the-world">为什么<code>cli</code>不能stop-the-world?</h4>
+<p>在很多操作系统教材上提到，“关中断”的方式可以实现原子性。这对于单处理器的确是行得通的——如果系统只有一个处理器，关闭中断后，除非主动放弃处理器，否则死循环就会让电脑彻底失去响应。</p>
+<p>但在多处理器系统上，<code>cli</code>指令关闭其他处理器的中断从设计和实现上都是不合理的。一方面，关闭其他处理器的中断会导致其他处理器的执行流严重混乱、延迟响应中断；另一方面，如果处理器核心横跨多个接口(sockets)，从物理上实现也是非常困难的。更要命的是，即便关闭了其他处理器的中断，我们依然得不到我们想要的原子性：当某个处理器访问<code>x</code>时，即便关闭了另一个处理器的中断，它仍然可以不受约束地访问共享内存。</p>
+</div>
+<p>AbstractMachine的MPE会谨慎地启动系统中的各个处理器，并且让它们都调用同一个函数。CTE中的<code>intr_write()</code>函数可以保证当前处理器执行的代码不被中断，但编译器和多处理器仍然导致顺序、原子性和可见性的丧失。硬件必须为我们提供机制保证这三点。</p>
+<h2 id="_3">硬件原子操作</h2>
+<p>计算机硬件的原子操作同时提供了顺序、原子性和可见性——基于原子操作，我们就能愉快地写出正确的并发程序了。所谓原子操作，它执行起来大概就是这么个感觉：</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">atomic_operation</span><span class="p">()</span> <span class="p">{</span>
+  <span class="n">stop_the_world</span><span class="p">();</span>
+  <span class="c1">// do some stuffs</span>
+  <span class="n">resume_the_world</span><span class="p">();</span> <span class="c1">// everything before is visible</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>这同时得到了顺序、原子性和可见性：不同的“stuff”因为stop the world的缘故，它们总有一个先后发生的顺序，并且因为世界停止，<code>atomic_operation</code>的原子性也得到了保证。此外，原子操作给我们另一个额外的保证是原子操作前所有的内存写，在原子操作后都被其他线程可见。</p>
+<p>x86为我们提供了LOCK指令前缀，实现原子的指令，即便一条指令中包含不止一个内存操作：</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">do_sum_nonatomic</span><span class="p">()</span> <span class="p">{</span>
+  <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">100000000</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">asm</span> <span class="k">volatile</span><span class="p">(</span><span class="s">"addq $1, %0"</span>     <span class="o">:</span> <span class="s">"=m"</span><span class="p">(</span><span class="n">sum</span><span class="p">));</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">do_sum_atomic</span><span class="p">()</span> <span class="p">{</span>
+  <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">100000000</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">asm</span> <span class="k">volatile</span><span class="p">(</span><span class="s">"lock addq $1, %0"</span><span class="o">:</span> <span class="s">"=m"</span><span class="p">(</span><span class="n">sum</span><span class="p">));</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>我们的课堂上已经演示过，使用lock的加法指令能得到正确的数值，但速度慢了几十倍！有兴趣的同学请阅读<a href="https://preshing.com/20130618/atomic-vs-non-atomic-operations/">材料</a>。我们提供了原子交换(exchange)的封装：</p>
+<div class="codehilite"><pre><span></span><span class="kt">intptr_t</span> <span class="nf">atomic_xchg</span><span class="p">(</span><span class="k">volatile</span> <span class="kt">intptr_t</span> <span class="o">*</span><span class="n">addr</span><span class="p">,</span>
+                              <span class="kt">intptr_t</span> <span class="n">newval</span><span class="p">)</span> <span class="p">{</span>
+  <span class="c1">// swap(*addr, newval);</span>
+  <span class="kt">intptr_t</span> <span class="n">result</span><span class="p">;</span>
+  <span class="k">asm</span> <span class="k">volatile</span> <span class="p">(</span><span class="s">"lock xchg %0, %1"</span><span class="o">:</span>
+    <span class="s">"+m"</span><span class="p">(</span><span class="o">*</span><span class="n">addr</span><span class="p">),</span> <span class="s">"=a"</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="o">:</span> <span class="s">"1"</span><span class="p">(</span><span class="n">newval</span><span class="p">)</span> <span class="o">:</span> <span class="s">"cc"</span><span class="p">);</span>
+  <span class="k">return</span> <span class="n">result</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>关于互斥的实现，请阅读教科书28章。</p>
+    </div>
+  </div>
+</center>
+
+<div class="footer-bottom">
+  <center>
+    <div class="copyright"> © 2019 Yanyan Jiang, All rights reserved </div>
+  </center>
+</div>
+
+<script>
+  $("math").each(function() {
+    var tex = $(this).text();
+    var html = katex.renderToString(tex, {
+      throwOnError: false
+    });
+    $(this).replaceWith(html);
+  });
+</script>
+
+    <script>
+      $("math").each(function() {
+        var tex = $(this).text();
+        var html = katex.renderToString(tex, {
+          throwOnError: false
+        });
+        $(this).replaceWith(html);
+      });
+    </script>
+  
+</body></html>

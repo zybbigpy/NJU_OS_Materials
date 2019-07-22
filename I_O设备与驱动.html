@@ -1,0 +1,247 @@
+
+<!-- saved from url=(0044)http://114.212.87.156:5000/wiki/OS2019_IODev -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="stylesheet" href="./I_O设备与驱动_files/bootstrap.min.css">
+    <link rel="stylesheet" href="./I_O设备与驱动_files/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="./I_O设备与驱动_files/katex.min.css">
+    <link rel="stylesheet" href="./I_O设备与驱动_files/wiki.css">
+    <link rel="stylesheet" href="./I_O设备与驱动_files/codehilite.css">
+
+    <script src="./I_O设备与驱动_files/katex.min.js.下载"></script>
+    <script src="./I_O设备与驱动_files/jquery.min.js.下载"></script>
+    
+    
+    
+
+    <title>I/O设备与驱动</title>
+  <style type="text/css">
+:root .content > a > .topline,
+:root .ch[onclick="ga(this,event)"]
+{ display: none !important; }</style></head>
+  <body>
+   
+   
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-header">
+    <div class="navbar-brand">
+      <a href="http://114.212.87.156:5000/wiki">Yanyan's Wiki</a>
+    </div>
+  </div>
+  <div class="collapse navbar-collapse">
+    <ul class="nav navbar-nav navbar-left"> 
+      <li><a href="http://114.212.87.156:5000/wiki/OS2019"><img class="textimg" src="./I_O设备与驱动_files/logo-n.png"> 操作系统(2019)</a></li>
+      <li><a href="http://114.212.87.156:5000/wiki/ICS_NJU"><img class="textimg" height="18px" src="./I_O设备与驱动_files/ics.png"> 加入我们</a></li>
+    </ul>
+  </div>
+</div>
+
+<center>
+  <div class="article-container">
+    <div class="article">
+      <h1 id="io">I/O设备与驱动</h1>
+<div class="fenced fenced-blue">
+<h4 id="_1">本讲阅读材料</h4>
+<p><a href="http://pages.cs.wisc.edu/~remzi/OSTEP/">教科书 (Operating Systems: Three Easy Pieces, OSTEP)</a>第36章。</p>
+</div>
+<h2 id="io_1">I/O设备</h2>
+<p>处理器的指令能够访问I/O设备，主要是通过两种方式实现的：</p>
+<ul>
+<li>端口I/O (Port IO, PIO)，相当于是为I/O设备提供了一个单独的地址空间，通过读/写端口的方式实现设备控制。通常，一个I/O设备的寄存器分为三类：状态寄存器、控制寄存器、数据寄存器。顾名思义，我们可以通过控制寄存器实现设备控制(例如设置设备的模式等)，从数据寄存器读写数据，并且读取状态寄存器来查看设备执行命令的状态。</li>
+<li>内存映射I/O (Memory-Mapped I/O, MMIO)。给特定的内存地址赋予特殊的含义，从而读/写内存地址就能实现设备的访问。在PA中，显存就是通过这种方式实现的。一方面，内存映射I/O完全可以用来实现状态/控制/数据寄存器，另一方面，在设备从外部看来是一段连续数据时(例如显存)，MMIO能减少I/O指令的数量。</li>
+</ul>
+<p>从道理上来说，I/O设备无非就是一组接口，能够读取/写入数据，I/O设备会根据自己的协议解读这些数据，并且反映到物理世界中去。我们每个人使用计算机，使用的都是它的I/O设备，因此对“计算机”的第一印象其实都来自这些设备——我们可以通过按键、移动鼠标，来改变屏幕上的内容。这一切都是用<strong>计算</strong>实现的——处理器读取二进制的数据、进行计算，再以二进制的形式输出。</p>
+<p>因此，一个I/O设备可以看做是若干可以读写的“寄存器”——我们只需能和设备交换状态、命令、数据，就能完成各类设备的访问。</p>
+<h3 id="_2">键盘控制器</h3>
+<p>键盘控制器内部有一个缓冲区，在按键之后会将键盘的扫描码保存到缓冲区内——这就是为什么老式的计算机如果没能进入操作系统，反复按键会导致报警——缓冲区满后，键盘的按键将丢失，键盘用报警的方式提醒用户。CPU可以通过I/O指令(根据系统实现，端口I/O或内存映射I/O)读取键盘控制的信息：</p>
+<div class="codehilite"><pre><span></span><span class="kt">int</span> <span class="n">status</span> <span class="o">=</span> <span class="n">inb</span><span class="p">(</span><span class="mh">0x64</span><span class="p">);</span>
+<span class="k">if</span> <span class="p">((</span><span class="n">status</span> <span class="o">&amp;</span> <span class="mh">0x1</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+  <span class="c1">// no input</span>
+<span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">status</span> <span class="o">&amp;</span> <span class="mh">0x20</span><span class="p">)</span> <span class="p">{</span> <span class="c1">// mouse</span>
+  <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+    <span class="kt">int</span> <span class="n">code</span> <span class="o">=</span> <span class="n">inb</span><span class="p">(</span><span class="mh">0x60</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xff</span><span class="p">;</span>
+    <span class="c1">// 按键的“扫描码”</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>鼠标和键盘是非常类似的，鼠标向控制器发送的是按键的信息，以及鼠标距离上一个时刻发生的位移<span class="katex"><span class="katex-mathml"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>(</mo><mi>x</mi><mo separator="true">,</mo><mi>y</mi><mo>)</mo><mo>(</mo><mi>x</mi><mo separator="true">,</mo><mi>y</mi><mo>)</mo></mrow><annotation encoding="application/x-tex">(x,y)(x, y)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="strut" style="height:0.75em;"></span><span class="strut bottom" style="height:1em;vertical-align:-0.25em;"></span><span class="base"><span class="mopen">(</span><span class="mord mathit">x</span><span class="mpunct">,</span><span class="mord mathit" style="margin-right:0.03588em;">y</span><span class="mclose">)</span><span class="mopen">(</span><span class="mord mathit">x</span><span class="mpunct">,</span><span class="mord mathit" style="margin-right:0.03588em;">y</span><span class="mclose">)</span></span></span></span></span><span class="katex-html" aria-hidden="true"><span class="strut" style="height:0.75em;"></span><span class="strut bottom" style="height:1em;vertical-align:-0.25em;"></span><span class="base"><span class="mopen">(</span><span class="mord mathit">x</span><span class="mpunct">,</span><span class="mord mathit" style="margin-right:0.03588em;">y</span><span class="mclose">)</span></span></span></span>坐标。</p>
+<h3 id="_3">磁盘控制器</h3>
+<p>磁盘控制器与键盘控制器相似，通过状态、控制、数据访问。因为磁盘相对于CPU是很慢的设备(磁盘中有机械装置，通常需要ms级别的时间才能完成操作)，因此让CPU不断轮询status寄存器会浪费很多CPU资源。因此，磁盘驱动器可以配置成中断模式，在磁盘准备完毕后发送中断。</p>
+<p>与磁盘交互的代码请参考xv6的<a href="https://github.com/mit-pdos/xv6-public/blob/master/ide.c">ide.c</a>。</p>
+<h3 id="_4">显卡</h3>
+<p>显卡是大家最感兴趣的设备——没有它，就没有那么多好玩的游戏了。不过当我们介绍显卡(GPU)的时候，并不通过“图形显示”这个功能来介绍它，而是写一段在显卡上运行的程序，来解释显卡的工作原理。以下是一段为GPU编写的程序：</p>
+<div class="codehilite"><pre><span></span><span class="n">__global__</span> <span class="kt">void</span> <span class="nf">add</span><span class="p">(</span><span class="kt">int</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="kt">int</span> <span class="o">*</span><span class="n">b</span><span class="p">,</span> <span class="kt">int</span> <span class="o">*</span><span class="n">c</span><span class="p">)</span> <span class="p">{</span>
+  <span class="kt">int</span> <span class="n">tid</span> <span class="o">=</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span> <span class="c1">// handle the data at this index if (tid &lt; N)</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">tid</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">c</span><span class="p">[</span><span class="n">tid</span><span class="p">]</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="n">tid</span><span class="p">]</span> <span class="o">+</span> <span class="n">b</span><span class="p">[</span><span class="n">tid</span><span class="p">];</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>可以看到，GPU上程序最重要的特性就是<strong>并行</strong>。一个GPU上有数以千计的核心，并且可以被配置成三维“立方体”的形态，编写一份程序可以在立方体的节点上同时运行(这个例子只用到了一个维度)——虽然每个CUDA核心的运算能力未必达到CPU，但在运算量极大的场景上，多核心的优势就体现出来了。</p>
+<p>CPU与GPU工作的模式大致如下：</p>
+<ul>
+<li>把需要的数据传送给GPU。对于上一个例子，GPU需要的数据是两个数组；对于游戏或图形显示的例子，GPU需要顶点信息、材质、贴图、映射等信息；</li>
+<li>通知GPU开始运算并等待运算结束；</li>
+<li>从GPU处取回运算结果。当然，如果运算的结果最终的目的是显示在屏幕上(例如算出1920x1080个像素点的颜色)，GPU可以帮助我们把这个信号发送到显示接口(例如HDMI)上，此时CPU就完全不必过问图形的显示了。</li>
+</ul>
+<p></p><center><img alt="" src="./I_O设备与驱动_files/gpu.png" width="640px"></center><p></p>
+<p>因此，刚才的<code>add</code>程序并不能直接在GPU上运行。GPU是一个I/O设备，它需要在CPU的指示下运行。为了在GPU上运行<code>add()</code>，我们可以使用如下的main函数。这段main函数运行在CPU上：</p>
+<div class="codehilite"><pre><span></span><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span> <span class="kt">void</span> <span class="p">)</span> <span class="p">{</span>
+  <span class="kt">int</span> <span class="n">a</span><span class="p">[</span><span class="n">N</span><span class="p">],</span> <span class="n">b</span><span class="p">[</span><span class="n">N</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="n">N</span><span class="p">];</span>
+  <span class="kt">int</span> <span class="o">*</span><span class="n">dev_a</span><span class="p">,</span> <span class="o">*</span><span class="n">dev_b</span><span class="p">,</span> <span class="o">*</span><span class="n">dev_c</span><span class="p">;</span>
+
+  <span class="c1">// allocate the memory on the GPU</span>
+  <span class="n">HANDLE_ERROR</span><span class="p">(</span><span class="n">cudaMalloc</span><span class="p">((</span><span class="kt">void</span><span class="o">**</span><span class="p">)</span><span class="o">&amp;</span><span class="n">dev_a</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">)));</span>
+  <span class="n">HANDLE_ERROR</span><span class="p">(</span><span class="n">cudaMalloc</span><span class="p">((</span><span class="kt">void</span><span class="o">**</span><span class="p">)</span><span class="o">&amp;</span><span class="n">dev_b</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">)));</span>
+  <span class="n">HANDLE_ERROR</span><span class="p">(</span><span class="n">cudaMalloc</span><span class="p">((</span><span class="kt">void</span><span class="o">**</span><span class="p">)</span><span class="o">&amp;</span><span class="n">dev_c</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">)));</span>
+
+  <span class="c1">// fill the arrays 'a' and 'b' on the CPU</span>
+  <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span> <span class="n">i</span><span class="o">&lt;</span><span class="n">N</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">a</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">i</span><span class="p">;</span>
+    <span class="n">b</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span> <span class="o">*</span> <span class="n">i</span><span class="p">;</span>
+  <span class="p">}</span>
+
+  <span class="c1">// copy the arrays 'a' and 'b' to the GPU</span>
+  <span class="n">HANDLE_ERROR</span><span class="p">(</span><span class="n">cudaMemcpy</span><span class="p">(</span><span class="n">dev_a</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">),</span> <span class="n">cudaMemcpyHostToDevice</span><span class="p">));</span>
+  <span class="n">HANDLE_ERROR</span><span class="p">(</span><span class="n">cudaMemcpy</span><span class="p">(</span><span class="n">dev_b</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">),</span> <span class="n">cudaMemcpyHostToDevice</span><span class="p">));</span>
+
+  <span class="n">add</span><span class="o">&lt;&lt;&lt;</span><span class="n">N</span><span class="p">,</span><span class="mi">1</span><span class="o">&gt;&gt;&gt;</span><span class="p">(</span> <span class="n">dev_a</span><span class="p">,</span> <span class="n">dev_b</span><span class="p">,</span> <span class="n">dev_c</span> <span class="p">);</span>
+
+  <span class="c1">// copy the array 'c' back from the GPU to the CPU</span>
+  <span class="n">HANDLE_ERROR</span><span class="p">(</span><span class="n">cudaMemcpy</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">dev_c</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">),</span> <span class="n">cudaMemcpyDeviceToHost</span><span class="p">));</span>
+
+  <span class="c1">// display the results</span>
+  <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span> <span class="n">i</span><span class="o">&lt;</span><span class="n">N</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span> <span class="s">"%d + %d = %d</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">a</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">b</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="p">);</span>
+  <span class="p">}</span>
+
+  <span class="c1">// free the memory allocated on the GPU</span>
+  <span class="n">cudaFree</span><span class="p">(</span><span class="n">dev_a</span><span class="p">);</span>
+  <span class="n">cudaFree</span><span class="p">(</span><span class="n">dev_b</span><span class="p">);</span>
+  <span class="n">cudaFree</span><span class="p">(</span><span class="n">dev_c</span><span class="p">);</span>
+  <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<div class="fenced fenced-green">
+<h4 id="gpu">编译到GPU：发生了什么？</h4>
+<p>使用nvcc可以编译程序到GPU。你没有猜错——CPU部分的代码和GPU部分的代码(由<code>__global__</code>标记)是分开编译的。在GPU上运行的程序有两种模式：</p>
+<ul>
+<li>直接生成GPU指令.cubin文件</li>
+<li>生成中间代码.ptx文件(可以想象成是NEMU中的RTL)，然后再由显卡驱动进行just-in-time编译，最终到GPU上运行</li>
+</ul>
+<p>编译到本地的二进制文件会负责与驱动程序通信，给GPU发送正确的指令，执行程序并等待执行完成。</p>
+</div>
+<p>为了显示图形，流程和上述代码是十分类似的，但GPU毕竟从它诞生的那一刻起的根本使命就是显示图像，因此有专门的核心、指令等用于<a href="https://en.wikipedia.org/wiki/Rendering_pipeline">图像显示</a>，刚才用于通用计算的程序就是脱胎于其中的“着色器” (shader)。这些知识已经超过操作系统课程的范畴——操作系统把GPU看成是总线上的一个设备，剩下的工作就都交给设备驱动程序了。</p>
+<p></p><center><img alt="" src="./I_O设备与驱动_files/gpu-1.png" width="480px"></center><p></p>
+<h3 id="dma">DMA</h3>
+<p>最后一类设备十分特殊：它并不负责与计算机系统外的I/O，它的出现主要是为了解决设备访问速度慢的一个缺点：试想我们希望从磁盘中读出海量的数据。在磁盘准备好后，我们就可以使用一个循环进行读取：</p>
+<div class="codehilite"><pre><span></span><span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">nbytes</span> <span class="o">/</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">uint32_t</span><span class="p">);</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">inl</span><span class="p">(</span><span class="n">DISK_PORT</span><span class="p">);</span> <span class="c1">// or</span>
+  <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">mmio_readl</span><span class="p">(</span><span class="n">DISK_MMIO_ADDR</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>再比如刚才我们的<code>cudaMemcpy</code>，如果要传送很大的数据(例如在游戏开始时向显卡传送的高清贴图)，就非常耗时了。为了把CPU从这些繁重的工作中解脱出来，就有了DMA这个设备。</p>
+<p></p><center><img alt="" src="./I_O设备与驱动_files/dma.png" width="640px"></center><p></p>
+<p>DMA设备可以看成是一个只能执行memcpy操作的处理器：</p>
+<div class="codehilite"><pre><span></span><span class="c1">// 设备寄存器；可以通过I/O进行设置</span>
+<span class="kt">uint8_t</span> <span class="o">*</span><span class="n">src</span><span class="p">,</span> <span class="o">*</span><span class="n">dst</span><span class="p">;</span>
+<span class="kt">size_t</span> <span class="n">length</span><span class="p">,</span> <span class="n">incr_src</span><span class="p">,</span> <span class="n">incr_dst</span><span class="p">;</span>
+
+<span class="kt">void</span> <span class="nf">do_dma</span><span class="p">()</span> <span class="p">{</span>
+  <span class="c1">// 收到DMA开始指令后开始执行</span>
+  <span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">length</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+    <span class="o">*</span><span class="n">src</span> <span class="o">=</span> <span class="o">*</span><span class="n">dst</span><span class="p">;</span> <span class="c1">// 可以是PIO/MMIO; 可以在设备-内存；内存-内存之间传递数据</span>
+    <span class="n">src</span> <span class="o">+=</span> <span class="n">incr_src</span><span class="p">;</span>
+    <span class="n">dst</span> <span class="o">+=</span> <span class="n">incr_dst</span><span class="p">;</span>
+  <span class="p">}</span>
+  <span class="n">send_interrupt</span><span class="p">();</span> <span class="c1">// 完成后向处理器发送中断</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>有了这样的一个特殊的设备，CPU就不再需要花费时间在传送大量I/O设备数据上，而是只需要传送少量控制数据(例如，给DMA设置<code>src</code>, <code>dst</code>等数值)。</p>
+<h2 id="_5">设备驱动程序</h2>
+<p>I/O设备五花八门。因此操作系统需要对设备进行额外的抽象，使得更上层的部分(通常是文件系统，大家之前已经看到“everything is a file”，每个设备在文件系统中都有一个与之对应的文件，并且可以执行文件操作)能够以统一的接口访问这些设备。</p>
+<p>I/O设备的几种常见类型：</p>
+<ul>
+<li>按照字节流访问的设备。键盘、鼠标、终端、显卡等都是此类设备。</li>
+<li>按照“数据块”为单位访问的设备。存储设备(磁盘、SSD)是典型的块设备。</li>
+<li>发送网络报文的设备。</li>
+</ul>
+<p>根据设备类型不同，我们给每一类设备以统一的接口访问，实现这些接口的就是设备驱动程序。例如在Lab2中，我们有非常简易的设备驱动层，每个设备都有init, read, write三种操作(假设设备在计算机启动的整个过程中均可用)：</p>
+<div class="codehilite"><pre><span></span><span class="k">typedef</span> <span class="k">struct</span> <span class="n">devops</span> <span class="p">{</span>
+  <span class="kt">int</span> <span class="p">(</span><span class="o">*</span><span class="n">init</span><span class="p">)(</span><span class="n">device_t</span> <span class="o">*</span><span class="n">dev</span><span class="p">);</span>
+  <span class="kt">ssize_t</span> <span class="p">(</span><span class="o">*</span><span class="n">read</span><span class="p">)(</span><span class="n">device_t</span> <span class="o">*</span><span class="n">dev</span><span class="p">,</span> <span class="kt">off_t</span> <span class="n">offset</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buf</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">count</span><span class="p">);</span>
+  <span class="kt">ssize_t</span> <span class="p">(</span><span class="o">*</span><span class="n">write</span><span class="p">)(</span><span class="n">device_t</span> <span class="o">*</span><span class="n">dev</span><span class="p">,</span> <span class="kt">off_t</span> <span class="n">offset</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buf</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">count</span><span class="p">);</span>
+<span class="p">}</span> <span class="n">devops_t</span><span class="p">;</span>
+</pre></div>
+
+
+<p>在实际的系统中，设备实现的操作要更多一些(例如Linux系统设备实现完整的<code>struct file_operations</code>)，这样上层的应用就可以用统一的接口来访问设备了。</p>
+<p>设备驱动程序会将对这些接口的调用翻译成设备的指令发送给设备，并等设备完成，因此，磁盘的read操作可能是这样实现的：</p>
+<div class="codehilite"><pre><span></span><span class="kt">ssize_t</span> <span class="nf">disk_read</span><span class="p">(</span><span class="n">deivce_t</span> <span class="o">*</span><span class="n">dev</span><span class="p">,</span> <span class="kt">off_t</span> <span class="n">offset</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buf</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">count</span><span class="p">)</span> <span class="p">{</span>
+  <span class="c1">// assume everything is valid</span>
+  <span class="n">P</span><span class="p">(</span><span class="n">disk_ready</span><span class="p">);</span>
+  <span class="n">set_disk_read</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="n">count</span><span class="p">);</span>
+  <span class="n">P</span><span class="p">(</span><span class="n">disk_ready</span><span class="p">);</span>
+  <span class="k">return</span> <span class="n">count</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">on_disk_irq</span><span class="p">()</span> <span class="p">{</span> <span class="c1">// 中断时调用</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">did_becomes_ready</span><span class="p">())</span> <span class="p">{</span>
+    <span class="n">V</span><span class="p">(</span><span class="n">disk_ready</span><span class="p">);</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>设备驱动层帮助我们屏蔽了底层设备的具体实现细节(例如寄存器的含义)。同理，如果我们想创建“虚拟”设备，也是非常容易的，只需要为它编写一个驱动程序即可。例如我们希望实现随机数生成器设备，就只需要实现设备的读接口，不需要有实际的设备：</p>
+<div class="codehilite"><pre><span></span><span class="kt">ssize_t</span> <span class="nf">random_read</span><span class="p">(</span><span class="n">deivce_t</span> <span class="o">*</span><span class="n">dev</span><span class="p">,</span> <span class="kt">off_t</span> <span class="n">offset</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buf</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">count</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">count</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+    <span class="p">((</span><span class="kt">uint8_t</span> <span class="o">*</span><span class="p">)</span><span class="n">buf</span><span class="p">)[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">random_byte</span><span class="p">();</span>
+  <span class="p">}</span>
+  <span class="k">return</span> <span class="n">count</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>Linux系统中就有一些虚拟的设备：<code>/dev/random</code>, <code>/dev/null</code>是大家熟知且经常使用的，它们被实现为了“字符设备”。</p>
+    </div>
+  </div>
+</center>
+
+<div class="footer-bottom">
+  <center>
+    <div class="copyright"> © 2019 Yanyan Jiang, All rights reserved </div>
+  </center>
+</div>
+
+<script>
+  $("math").each(function() {
+    var tex = $(this).text();
+    var html = katex.renderToString(tex, {
+      throwOnError: false
+    });
+    $(this).replaceWith(html);
+  });
+</script>
+
+    <script>
+      $("math").each(function() {
+        var tex = $(this).text();
+        var html = katex.renderToString(tex, {
+          throwOnError: false
+        });
+        $(this).replaceWith(html);
+      });
+    </script>
+  
+</body></html>

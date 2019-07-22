@@ -1,0 +1,210 @@
+
+<!-- saved from url=(0045)http://114.212.87.156:5000/wiki/OS2019_FSImpl -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="stylesheet" href="./文件系统实现_files/bootstrap.min.css">
+    <link rel="stylesheet" href="./文件系统实现_files/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="./文件系统实现_files/katex.min.css">
+    <link rel="stylesheet" href="./文件系统实现_files/wiki.css">
+    <link rel="stylesheet" href="./文件系统实现_files/codehilite.css">
+
+    <script src="./文件系统实现_files/katex.min.js.下载"></script>
+    <script src="./文件系统实现_files/jquery.min.js.下载"></script>
+    
+    
+    
+
+    <title>文件系统实现</title>
+  <style type="text/css">
+:root .content > a > .topline,
+:root .ch[onclick="ga(this,event)"]
+{ display: none !important; }</style></head>
+  <body>
+   
+   
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-header">
+    <div class="navbar-brand">
+      <a href="http://114.212.87.156:5000/wiki">Yanyan's Wiki</a>
+    </div>
+  </div>
+  <div class="collapse navbar-collapse">
+    <ul class="nav navbar-nav navbar-left"> 
+      <li><a href="http://114.212.87.156:5000/wiki/OS2019"><img class="textimg" src="./文件系统实现_files/logo-n.png"> 操作系统(2019)</a></li>
+      <li><a href="http://114.212.87.156:5000/wiki/ICS_NJU"><img class="textimg" height="18px" src="./文件系统实现_files/ics.png"> 加入我们</a></li>
+    </ul>
+  </div>
+</div>
+
+<center>
+  <div class="article-container">
+    <div class="article">
+      <h1 id="_1">文件系统实现</h1>
+<div class="fenced fenced-blue">
+<h4 id="_2">本讲阅读材料</h4>
+<p><a href="http://pages.cs.wisc.edu/~remzi/OSTEP/">教科书 (Operating Systems: Three Easy Pieces, OSTEP)</a>第37, 40章。</p>
+</div>
+<p>文件系统是实现在一个存储设备上的(HDD, SSD, USB Flash等等)。为了简化讨论，我们不妨假设存储设备为我们提供的接口是按某个大小的“块”(例如512B或4KB)来访问的：</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">block_read</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">buf</span><span class="p">,</span> <span class="kt">uint64_t</span> <span class="n">blkid</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">block_write</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">buf</span><span class="p">,</span> <span class="kt">uint64_t</span> <span class="n">blkid</span><span class="p">);</span>
+</pre></div>
+
+
+<p>实际的存储设备通常支持多个块的连续读写，并且通过中断和DMA进行管理。但总体来说，我们可以向设备提交请求，设备会逐个完成提交的读写请求。关于磁盘设备，请大家阅读教科书37章。</p>
+<p>在这样以块为单位访问的存储设备上，我们希望实现文件和目录的操作：</p>
+<ul>
+<li>
+<p>目录操作</p>
+<ul>
+<li>mkdir在目录中创建子目录</li>
+<li>rmdir在目录中删除子目录(要求子目录为空)</li>
+<li>link在目录中创建到某个文件的链接</li>
+<li>unlink在目录中删除到某个文件的链接</li>
+<li>create在目录中创建一个空白的新文件</li>
+</ul>
+</li>
+<li>
+<p>文件操作</p>
+<ul>
+<li>open打开一个已经存在的文件，返回文件描述符</li>
+<li>close关闭文件描述符</li>
+<li>read, write, lseek文件操作</li>
+</ul>
+</li>
+</ul>
+<p>我们将从最简单的情况开始，逐步分析应该怎样在设备上实现持久的文件系统。</p>
+<h2 id="_3">文件：虚拟磁盘</h2>
+<p>我们需要用固定大小的blocks实现虚拟磁盘——一个<code>std::vector&lt;char&gt;</code>。因此我们首先需要一个block分配的函数(<code>balloc()</code>, <code>bfree()</code>)，每次可以分配一个数据块。</p>
+<p>一个最简单的实现是把数据块用链表链接起来，在每一块的末尾保存指向下一块的“指针”：</p>
+<div class="codehilite"><pre><span></span><span class="k">struct</span> <span class="n">block</span> <span class="p">{</span>
+  <span class="kt">uint8_t</span> <span class="n">payload</span><span class="p">[</span><span class="n">BLOCK_SIZE</span> <span class="o">-</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">uint32_t</span><span class="p">)];</span>
+  <span class="kt">uint32_t</span> <span class="n">next_block_id</span><span class="p">;</span>
+<span class="p">}</span> <span class="n">__attribute__</span><span class="p">((</span><span class="n">packed</span><span class="p">));</span>
+</pre></div>
+
+
+<p>另一种方式是类似于我们的页表，使用类似页目录-页表-物理页的多级索引结构实现。这两种实现各有优劣：</p>
+<ul>
+<li>链表在文件小(尤其是不超过几个块的文件)时表现较好，尤其是注意到很多文件操作只是读取头部的数据，索引结构则需要读取额外的索引块；</li>
+<li>索引的lseek性能更好，例如实现追加打开时，不需要首先遍历整个文件。</li>
+</ul>
+<h2 id="_4">目录：用文件实现</h2>
+<p>假设系统中的每个文件/目录都有一个唯一的编号(稍后我们将讨论如何为每个文件维护这个编号)，那么目录就可以看成是文件名(目录名)到编号的映射：</p>
+<div class="codehilite"><pre><span></span><span class="k">using</span> <span class="n">dir_t</span> <span class="o">=</span> <span class="n">std</span><span class="o">::</span><span class="n">map</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">,</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="p">;</span>
+</pre></div>
+
+
+<p>既然目录也是数据，我们不妨用普通的文件(<code>std::vector&lt;char&gt;</code>)来存储目录中的key-value pair (每一个key-value pair称为一个目录项，directory entry)，相当于“用目录实现文件”，让每个目录对应一个“目录文件”，存储key-value mapping。</p>
+<p>这个设计可以天然地支持文件系统中的链接——只要允许目录中存在到相同编号的映射即可。</p>
+<div class="fenced fenced-green">
+<h4 id="_5">实现链接</h4>
+<p>仅仅允许目录中存在到相同编号的映射还不够实现链接。试想以下的操作序列：</p>
+<div class="codehilite"><pre><span></span>touch a.txt # 假设之前不存在
+link a.txt b.txt
+rm b.txt
+rm a.txt # a.txt占用的存储空间应当被释放
+</pre></div>
+
+
+<p>为了确保在unlink时，能正确地知道是否可以回收文件占用的存储空间，我们还需要每个文件的链接计数。</p>
+</div>
+<p>在vector上实现key-value mapping的数据结构不少，例如：</p>
+<ul>
+<li>线性表，直接按顺序存储所有目录项。在目录操作时，需要遍历所有已有的目录项。</li>
+<li>哈希表，查找效率高(路径解析时不需要遍历目录项)，但可能有一定程度的空间浪费。</li>
+<li>索引数据结构，实现效率-空间的权衡，实现相对复杂。</li>
+</ul>
+<h2 id="_6">文件和目录元数据</h2>
+<p>最后，每个文件和目录有属于它的一些“固有属性”，例如：</p>
+<ul>
+<li>文件的唯一id；</li>
+<li>文件的类型，用于区分普通文件和目录文件；</li>
+<li>访问权限，就是大家熟知的rwxrwxrwx；</li>
+<li>所有者信息 (uid, gid)，但这在跨系统访问时成为很大的麻烦；</li>
+<li>文件大小；</li>
+<li>文件访问的时间信息：创建时间、访问时间、修改时间；</li>
+<li>链接数量 (刚才已经提到)；</li>
+<li>一些其他信息，例如文件的第一个数据块的编号等。</li>
+</ul>
+<p>这些信息是所有文件都有的，我们沿用UNIX系统一直以来的惯例，用一个结构体来表示它，这就是大家熟知的inode (index node)。使用<code>ls -i</code>可以查看文件的inode编号，哪怕是Windows系统里的文件(好吧，还是有一些不是文件的文件)：</p>
+<div class="codehilite"><pre><span></span>  844424930132006 '$Recycle.Bin'
+  844424930135623 'Documents and Settings'
+ 2251799814000425  Intel
+  281474976928166  MSOCache
+10977524091732747  OneDriveTemp
+ 1407374883934010  PerfLogs
+ 1125899907223355 'Program Files'
+  562949953803473 'Program Files (x86)'
+  562949953803574  ProgramData
+  281474976713152  Recovery
+  562949953459436 'System Volume Information'
+  562949953803728  Users
+  844424930514441  Windows
+                ?  hiberfil.sys
+                ?  pagefile.sys
+                ?  swapfile.sys
+</pre></div>
+
+
+<p>inode也有若干种存储方式：</p>
+<ul>
+<li>连续存储在文件系统中的某个区域，这样可以直接根据inode的编号计算出inode在磁盘中的位置，这也是实现文件唯一id的一个途径；</li>
+<li>存储在文件头部，文件唯一id = 第一个数据块的编号；</li>
+<li>存储在目录文件中，文件唯一id = 第一个数据块的编号，在支持链接的文件系统中，文件的元数据会有多份拷贝。</li>
+</ul>
+<h2 id="_7">实现文件系统的几个关键数据</h2>
+<p>经过之前的讨论，我们已经知道，考虑一个文件系统的实现，我们主要要关注以下的问题：</p>
+<ul>
+<li>如何在磁盘上分配/回收数据块</li>
+<li>如何用数据块表示文件(链表、树、……)</li>
+<li>如何用文件表示目录(线性表、哈希表、索引、……)</li>
+<li>文件的元数据如何存储、如何管理文件的id</li>
+</ul>
+<div class="fenced fenced-green">
+<h4 id="_8">设计你的文件系统</h4>
+<p>你应该可以自行设计出很多文件系统，并且你会考虑这些文件系统在各种意义上的好坏：</p>
+<ul>
+<li>性能<ul>
+<li>在存在超大的文件、目录下上百万个文件时各个操作的性能表现</li>
+<li>在各种类型workload的读/写文件(顺序/随机、读/写分布等)、目录操作比例下的性能表现</li>
+<li>多进程并发时的文件系统表现(例如多个进程在同一个目录中创建/删除文件)</li>
+</ul>
+</li>
+<li>可靠性<ul>
+<li>在系统可能因为意外崩溃(例如断电)时，文件系统实现的正确性</li>
+<li>在磁盘可能损坏的前提下，文件系统的可靠性</li>
+</ul>
+</li>
+</ul>
+</div>
+<p>我们将会在之后的课程中介绍如何实现高性能、可靠的文件系统。</p>
+    </div>
+  </div>
+</center>
+
+<div class="footer-bottom">
+  <center>
+    <div class="copyright"> © 2019 Yanyan Jiang, All rights reserved </div>
+  </center>
+</div>
+
+<script>
+  $("math").each(function() {
+    var tex = $(this).text();
+    var html = katex.renderToString(tex, {
+      throwOnError: false
+    });
+    $(this).replaceWith(html);
+  });
+</script>
+
+    <script>
+      $("math").each(function() {
+        var tex = $(this).text();
+        var html = katex.renderToString(tex, {
+          throwOnError: false
+        });
+        $(this).replaceWith(html);
+      });
+    </script>
+  
+</body></html>

@@ -1,0 +1,136 @@
+
+<!-- saved from url=(0047)http://114.212.87.156:5000/wiki/OS2019_Security -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="stylesheet" href="./操作系统安全_files/bootstrap.min.css">
+    <link rel="stylesheet" href="./操作系统安全_files/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="./操作系统安全_files/katex.min.css">
+    <link rel="stylesheet" href="./操作系统安全_files/wiki.css">
+    <link rel="stylesheet" href="./操作系统安全_files/codehilite.css">
+
+    <script src="./操作系统安全_files/katex.min.js.下载"></script>
+    <script src="./操作系统安全_files/jquery.min.js.下载"></script>
+    
+    
+    
+
+    <title>操作系统安全</title>
+  <style type="text/css">
+:root .content > a > .topline,
+:root .ch[onclick="ga(this,event)"]
+{ display: none !important; }</style></head>
+  <body>
+   
+   
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-header">
+    <div class="navbar-brand">
+      <a href="http://114.212.87.156:5000/wiki">Yanyan's Wiki</a>
+    </div>
+  </div>
+  <div class="collapse navbar-collapse">
+    <ul class="nav navbar-nav navbar-left"> 
+      <li><a href="http://114.212.87.156:5000/wiki/OS2019"><img class="textimg" src="./操作系统安全_files/logo-n.png"> 操作系统(2019)</a></li>
+      <li><a href="http://114.212.87.156:5000/wiki/ICS_NJU"><img class="textimg" height="18px" src="./操作系统安全_files/ics.png"> 加入我们</a></li>
+    </ul>
+  </div>
+</div>
+
+<center>
+  <div class="article-container">
+    <div class="article">
+      <h1 id="_1">操作系统安全</h1>
+<div class="fenced fenced-blue">
+<h4 id="_2">本讲阅读材料</h4>
+<ul>
+<li>Aleph One. <a href="https://insecure.org/stf/smashstack.html">Smashing the stack for fun and profit</a>. 缓冲区溢出的开山之作</li>
+<li>M Lipp, et al. <a href="https://www.usenix.org/conference/usenixsecurity18/presentation/lipp">Meltdown: Reading kernel memory from user space</a>. In <em>Proc. of USENIX Security</em>, 2018.</li>
+</ul>
+</div>
+<p>访问控制在道理上似乎很好地解决了操作系统中的安全问题：只要访问控制策略设置正确、访问控制机制实现无误，那么系统的安全就能得到保障。具体来说，“安全”分为三个重要的组成部分：</p>
+<ul>
+<li>(安) Confidentiality：别人无法看到我不想让他看到的东西</li>
+<li>(全) Integrity：别人无法恶意破坏我拥有的东西</li>
+<li>Availability：别人无法阻止我做我能做的事</li>
+</ul>
+<p>在实际的系统中，这几乎是个永远无法达成的目标——在之前的课程中我们已经知道，现代软件系统和操作系统的行为非常复杂，已经远远超过一个普通人能够管理的复杂性，因此软件(甚至硬件)中经常存在大家没有注意的角落，要么导致设置了错误的访问控制策略；要么导致了访问控制机制不能正确工作。</p>
+<h2 id="_3">错误设置访问控制策略</h2>
+<p>如果把家门打开，小偷是不是就更容易光顾了？听起来不可思议，但忘记关宿舍门这种事，大家想必没有少干过。错误设置的访问控制策略未必是错误设置了rwx的权限：</p>
+<div class="codehilite"><pre><span></span>$ ./httpd –p 8000 /var/www
+&gt; Listening 0.0.0.0:8000
+&gt; GET /
+&gt; 200 OK -&gt; /var/www/index.html
+&gt; GET ../../etc/passwd
+&gt; 200 OK -&gt; /etc/passwd  # 泄露
+</pre></div>
+
+
+<p>操作系统提供的访问控制机制没法保证你设置错误的访问控制策略——如果没有小心地处理用户输入(并做访问控制检查)，系统(尤其是服务器)就可能出现各种各样的安全漏洞。另一种常见的bug是注入攻击：</p>
+<p></p><center><img alt="" src="./操作系统安全_files/sql-injection-car.jpg" width="400px"></center><p></p>
+<p>如果可怜的程序员不小心写到</p>
+<div class="codehilite"><pre><span></span><span class="p">...</span>
+<span class="kt">char</span> <span class="o">*</span><span class="n">query</span> <span class="o">=</span> <span class="n">asprintf</span><span class="p">(</span>
+  <span class="s">"UPDATE car_record (id, station, time) VALUES ('%s', %d, %d)"</span><span class="p">,</span>
+  <span class="n">ocr_result</span><span class="p">,</span>
+  <span class="n">station_id</span><span class="p">,</span>
+  <span class="n">timestamp</span><span class="p">);</span>
+<span class="k">if</span> <span class="p">(</span><span class="n">query</span><span class="p">)</span> <span class="n">SQL_execute</span><span class="p">(</span><span class="n">query</span><span class="p">);</span>
+<span class="p">...</span>
+</pre></div>
+
+
+<p>OCR又恰好没有做数据清理，嘿嘿……这些漏洞即便在操作系统安全机制正确工作的前提下，依然会导致严重的后果。</p>
+<h2 id="_4">有缺陷的访问控制机制</h2>
+<p>另一种更为可怕的问题是操作系统中的bugs可能让访问控制失效。我们都知道，(以前)操作系统会把内核代码和用户进程都映射到同一个地址空间里，但使用虚拟存储的访问控制机制，禁止运行在低特权级的进程访问内核映射的内存区域，访问将会导致缺页异常。但如果CPU有bug访问控制机制失效，就有可能让用户访问内核数据——这就是非常著名的<a href="https://www.usenix.org/conference/usenixsecurity18/presentation/lipp">Meltdown</a>漏洞。</p>
+<p>此外，为了让C代码能够高效地运行在各种体系结构上，C语言标准中规定了很多行为是undefined，例如以下两种bugs (UB)非常容易造成安全漏洞：</p>
+<ul>
+<li>缓冲区(栈/堆)溢出</li>
+<li>invalid pointer dereference，一个常见的情况是use after free</li>
+</ul>
+<p>回顾计算机硬件执行函数调用的过程，<code>call</code>指令会把函数返回的地址保存在堆栈上(<code>rsp</code>寄存器所指位置)，而<code>ret</code>指令的行为就是从<code>rsp</code>处取出下一条PC的地址。因此，缓冲区溢出，例如</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">f</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">ptr</span><span class="p">)</span> <span class="p">{</span>
+  <span class="kt">char</span> <span class="n">buf</span><span class="p">[</span><span class="mi">64</span><span class="p">];</span>
+  <span class="p">...</span>
+  <span class="n">strcpy</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">ptr</span><span class="p">);</span>
+  <span class="p">...</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>如果<code>ptr</code>所指的区域长度超过<code>buf</code>能容纳的空间，就会从低地址向高地址开始覆盖其他变量。如果把精心构造的数据写入堆栈(例如<a href="https://en.wikipedia.org/wiki/Return-oriented_programming">return-oriented-programming, ROP</a>)，通过向软件(操作系统)发送一个字符串，就能取得软件(操作系统)的控制权！难怪这要在标准里定义成UB：</p>
+<div class="fenced fenced-blue">
+<h4 id="undefined-behavior">Undefined Behavior</h4>
+<p>In the C community, undefined behavior may be humorously referred to as “nasal demons”, after a comp.std.c post that explained undefined behavior as allowing the compiler to do anything it chooses, even “to make demons fly out of your nose”.</p>
+<p>没有UB (managed heap)的语言(例如Java)在安全性方面就比C好得多，至少不用担心缓冲区溢出、use-after-free的问题。</p>
+</div>
+<p>同理，黑客可能非常聪明地在堆区中写入数据，以利用use-after-free使系统执行一些非预期的行为。</p>
+    </div>
+  </div>
+</center>
+
+<div class="footer-bottom">
+  <center>
+    <div class="copyright"> © 2019 Yanyan Jiang, All rights reserved </div>
+  </center>
+</div>
+
+<script>
+  $("math").each(function() {
+    var tex = $(this).text();
+    var html = katex.renderToString(tex, {
+      throwOnError: false
+    });
+    $(this).replaceWith(html);
+  });
+</script>
+
+    <script>
+      $("math").each(function() {
+        var tex = $(this).text();
+        var html = katex.renderToString(tex, {
+          throwOnError: false
+        });
+        $(this).replaceWith(html);
+      });
+    </script>
+  
+</body></html>

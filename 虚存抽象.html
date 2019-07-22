@@ -1,0 +1,281 @@
+
+<!-- saved from url=(0043)http://114.212.87.156:5000/wiki/OS2019_VMem -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="stylesheet" href="./虚存抽象_files/bootstrap.min.css">
+    <link rel="stylesheet" href="./虚存抽象_files/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="./虚存抽象_files/katex.min.css">
+    <link rel="stylesheet" href="./虚存抽象_files/wiki.css">
+    <link rel="stylesheet" href="./虚存抽象_files/codehilite.css">
+
+    <script src="./虚存抽象_files/katex.min.js.下载"></script>
+    <script src="./虚存抽象_files/jquery.min.js.下载"></script>
+    
+    
+    
+
+    <title>虚存抽象</title>
+  <style type="text/css">
+:root .content > a > .topline,
+:root .ch[onclick="ga(this,event)"]
+{ display: none !important; }</style></head>
+  <body>
+   
+   
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-header">
+    <div class="navbar-brand">
+      <a href="http://114.212.87.156:5000/wiki">Yanyan's Wiki</a>
+    </div>
+  </div>
+  <div class="collapse navbar-collapse">
+    <ul class="nav navbar-nav navbar-left"> 
+      <li><a href="http://114.212.87.156:5000/wiki/OS2019"><img class="textimg" src="./虚存抽象_files/logo-n.png"> 操作系统(2019)</a></li>
+      <li><a href="http://114.212.87.156:5000/wiki/ICS_NJU"><img class="textimg" height="18px" src="./虚存抽象_files/ics.png"> 加入我们</a></li>
+    </ul>
+  </div>
+</div>
+
+<center>
+  <div class="article-container">
+    <div class="article">
+      <h1 id="_1">虚存抽象</h1>
+<div class="fenced fenced-blue">
+<h4 id="_2">本讲阅读材料</h4>
+<p><a href="http://pages.cs.wisc.edu/~remzi/OSTEP/">教科书 (Operating Systems: Three Easy Pieces, OSTEP)</a>第13-20章。</p>
+</div>
+<h2 id="_3">进程的地址空间</h2>
+<h3 id="_4">概念</h3>
+<p>我们都知道，操作系统为进程提供了虚拟的内存(进程不可见、不可调的虚拟内存映射<span class="katex"><span class="katex-mathml"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>V</mi><mi>M</mi><mtext>VM</mtext></mrow><annotation encoding="application/x-tex">VM\textit{VM}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="strut" style="height:0.68333em;"></span><span class="strut bottom" style="height:0.68333em;vertical-align:0em;"></span><span class="base"><span class="mord mathit" style="margin-right:0.22222em;">V</span><span class="mord mathit" style="margin-right:0.10903em;">M</span><span class="mord text"><span class="mord textit">VM</span></span></span></span></span></span><span class="katex-html" aria-hidden="true"><span class="strut" style="height:0.68333em;"></span><span class="strut bottom" style="height:0.68333em;vertical-align:0em;"></span><span class="base"><span class="mord text"><span class="mord textit">VM</span></span></span></span></span>，能把每一个虚拟地址<span class="katex"><span class="katex-mathml"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>x</mi><mi>x</mi></mrow><annotation encoding="application/x-tex">xx</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="strut" style="height:0.43056em;"></span><span class="strut bottom" style="height:0.43056em;vertical-align:0em;"></span><span class="base"><span class="mord mathit">x</span><span class="mord mathit">x</span></span></span></span></span><span class="katex-html" aria-hidden="true"><span class="strut" style="height:0.43056em;"></span><span class="strut bottom" style="height:0.43056em;vertical-align:0em;"></span><span class="base"><span class="mord mathit">x</span></span></span></span>的访问转换成物理地址<span class="katex"><span class="katex-mathml"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>V</mi><mi>M</mi><mo>(</mo><mi>x</mi><mo>)</mo><mtext>VM</mtext><mo>(</mo><mi>x</mi><mo>)</mo></mrow><annotation encoding="application/x-tex">VM(x)\textit{VM}(x)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="strut" style="height:0.75em;"></span><span class="strut bottom" style="height:1em;vertical-align:-0.25em;"></span><span class="base"><span class="mord mathit" style="margin-right:0.22222em;">V</span><span class="mord mathit" style="margin-right:0.10903em;">M</span><span class="mopen">(</span><span class="mord mathit">x</span><span class="mclose">)</span><span class="mord text"><span class="mord textit">VM</span></span><span class="mopen">(</span><span class="mord mathit">x</span><span class="mclose">)</span></span></span></span></span><span class="katex-html" aria-hidden="true"><span class="strut" style="height:0.75em;"></span><span class="strut bottom" style="height:1em;vertical-align:-0.25em;"></span><span class="base"><span class="mord text"><span class="mord textit">VM</span></span><span class="mopen">(</span><span class="mord mathit">x</span><span class="mclose">)</span></span></span></span>的访问)，让进程仿佛独占整个内存。</p>
+<p>那么问题来了：进程眼中的内存到底长什么样呢？为了回答这个问题，就回到“什么是程序”上——程序的执行需要内存里有什么？顺着这个思路，不难得到地址空间里应该有的东西：</p>
+<ol>
+<li>程序的<strong>代码</strong>和<strong>数据</strong>。代码可以是只读的；数据也有很多种，例如字符串常量(你可以试试把一个字符串强制类型转换成<code>char *</code>，然后修改它)，例如全局变量(在全局作用域定义的<code>int x;</code>)，以及动态分配内存的区域(例如<code>malloc()</code>的返回值)。</li>
+<li>程序执行的<strong>堆栈</strong>。堆栈是实现函数调用必不可少的，虽然原则上并不需要，但既然指令集里有了这个概念，总要为它分配空间。</li>
+<li>动态链接库的<strong>代码</strong>和<strong>数据</strong>。动态链接库不需要堆栈，为什么？</li>
+</ol>
+<p>除此之外，现代操作系统还玩了一个非常有趣的小trick：<strong>操作系统的代码和数据也映射到进程的地址空间中</strong>，只是进程无权访问。</p>
+<p>这么做有非常明显的好处：当进程请求操作系统运行(系统调用)或中断到来时，不需要切换<span class="katex"><span class="katex-mathml"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>V</mi><mi>M</mi><mtext>VM</mtext></mrow><annotation encoding="application/x-tex">VM\textit{VM}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="strut" style="height:0.68333em;"></span><span class="strut bottom" style="height:0.68333em;vertical-align:0em;"></span><span class="base"><span class="mord mathit" style="margin-right:0.22222em;">V</span><span class="mord mathit" style="margin-right:0.10903em;">M</span><span class="mord text"><span class="mord textit">VM</span></span></span></span></span></span><span class="katex-html" aria-hidden="true"><span class="strut" style="height:0.68333em;"></span><span class="strut bottom" style="height:0.68333em;vertical-align:0em;"></span><span class="base"><span class="mord text"><span class="mord textit">VM</span></span></span></span></span>就能执行操作系统代码，而操作系统代码执行后就能直接访问进程的地址空间(例如我们执行<code>read(fd, buf, size)</code>的时候，操作系统代码立即就能访问<code>buf</code>)。通过硬件的访问权限管理，进程一旦访问属于操作系统的内存，就会触发非法操作，由操作系统杀死。</p>
+<div class="fenced fenced-green">
+<h4 id="_5">事情没那么简单</h4>
+<p>虽然我们都觉得这么做很安全也提高了性能，但偏偏硬件还有漏洞。有兴趣的同学可以看看<a href="https://zhuanlan.zhihu.com/p/32757727">Spectre和Meltdown</a>的故事，课程会在操作系统安全部分回到这个话题。</p>
+</div>
+<h3 id="linux">Linux进程的地址空间</h3>
+<p>回到进程眼中的内存：无论是代码、数据、bss、堆区、栈区、操作系统……这些空间通常都是连续的，想办法把它们排在地址空间里就行了。操作系统也为我们提供了工具，查看某个地址空间：</p>
+<div class="codehilite"><pre><span></span>./a.out <span class="p">&amp;</span> // 后台运行一个程序
+pmap <span class="nv">$!</span>   // 使用pmap命令查看进程地址空间信息
+</pre></div>
+
+
+<p>例如，一个静态链接的C程序的pmap输出结果：</p>
+<div class="codehilite"><pre><span></span>0000000000400000    728K r-x-- a.out
+00000000006b6000     24K rw--- a.out
+00000000006bc000      4K rw---   [ anon ]
+0000000000fa4000    140K rw---   [ anon ]
+00007ffed8844000    132K rw---   [ stack ]
+00007ffed8928000     12K r----   [ anon ]
+00007ffed892b000      8K r-x--   [ anon ]
+ffffffffff600000      4K r-x--   [ anon ]
+</pre></div>
+
+
+<p>如果想自己实现一个pmap，我们可以用ltrace/ptrace把它“拆开”，看看它到底做了什么获得了进程的地址空间信息：</p>
+<div class="codehilite"><pre><span></span>$ strace pmap $!
+...
+openat(AT_FDCWD, "/proc/2078/maps", O_RDONLY) = 3
+fstat(3, {st_mode=S_IFREG|0444, st_size=0, ...}) = 0
+read(3, "00400000-004b6000 r-xp 00000000 "..., 1024) = 614
+</pre></div>
+
+
+<p>经过一些观察，不难发现是procfs里有这个信息！感谢Everything is a file，procfs把操作系统内进程的信息作为文件暴露给了操作系统的其他部分。这样我们也可以实现一个自己的pmap了。言归正传，procfs里提供的maps信息，比pmap还要多一些：</p>
+<div class="codehilite"><pre><span></span>00400000-004b6000 r-xp 00000000 08:02 2359313              /tmp/a.out
+006b6000-006bc000 rw-p 000b6000 08:02 2359313              /tmp/a.out
+006bc000-006bd000 rw-p 00000000 00:00 0 
+00fa4000-00fc7000 rw-p 00000000 00:00 0                    [heap]
+7ffed8844000-7ffed8865000 rw-p 00000000 00:00 0            [stack]
+7ffed8928000-7ffed892b000 r--p 00000000 00:00 0            [vvar]
+7ffed892b000-7ffed892d000 r-xp 00000000 00:00 0            [vdso]
+ffffffffff600000-ffffffffff601000 r-xp 00000000 00:00 0    [vsyscall]
+</pre></div>
+
+
+<p>不难理解(和验证)的是：</p>
+<ul>
+<li>00400000-004b6000的只读、可执行的部分是a.out的代码和只读数据；</li>
+<li>006b6000-006bc000的可读写部分是a.out的静态数据；</li>
+<li>剩下已经有名字的部分：heap是堆区，stack是栈区。</li>
+</ul>
+<p>在数据区之后，我们一个猜测是006bc000-006bd000一段匿名区域是bss节，它的大小(内存映射以页面为单位，刚好一个页面)和位置(位于数据节之后)刚好符合。</p>
+<div class="fenced fenced-green">
+<h4 id="_6">如何验证这个猜想？</h4>
+<p>我们可以使用一些系统工具(例如readelf)，或者自己写程序来验证上述猜测(例如利用end符号)。有兴趣的同学不妨试试。</p>
+</div>
+<p>对于动态链接程序，也是类似的，只是每一个动态链接库都有代码、数据、bss，但进程中只有一个堆区和一个堆栈：</p>
+<div class="codehilite"><pre><span></span>55dd6c01b000-55dd6c01c000 r-xp 00000000 08:02 2359313     /tmp/a.out
+55dd6c21b000-55dd6c21c000 r--p 00000000 08:02 2359313     /tmp/a.out
+55dd6c21c000-55dd6c21d000 rw-p 00001000 08:02 2359313     /tmp/a.out
+7fc8ca48e000-7fc8ca675000 r-xp 00000000 08:02 5772000     /lib/x86_64-linux-gnu/libc-2.27.so
+7fc8ca675000-7fc8ca875000 ---p 001e7000 08:02 5772000     /lib/x86_64-linux-gnu/libc-2.27.so
+7fc8ca875000-7fc8ca879000 r--p 001e7000 08:02 5772000     /lib/x86_64-linux-gnu/libc-2.27.so
+7fc8ca879000-7fc8ca87b000 rw-p 001eb000 08:02 5772000     /lib/x86_64-linux-gnu/libc-2.27.so
+7fc8ca87b000-7fc8ca87f000 rw-p 00000000 00:00 0 
+7fc8ca87f000-7fc8ca8a6000 r-xp 00000000 08:02 5771988     /lib/x86_64-linux-gnu/ld-2.27.so
+7fc8caa91000-7fc8caa93000 rw-p 00000000 00:00 0 
+7fc8caaa6000-7fc8caaa7000 r--p 00027000 08:02 5771988     /lib/x86_64-linux-gnu/ld-2.27.so
+7fc8caaa7000-7fc8caaa8000 rw-p 00028000 08:02 5771988     /lib/x86_64-linux-gnu/ld-2.27.so
+7fc8caaa8000-7fc8caaa9000 rw-p 00000000 00:00 0 
+7ffe38768000-7ffe38789000 rw-p 00000000 00:00 0           [stack]
+7ffe38795000-7ffe38798000 r--p 00000000 00:00 0           [vvar]
+7ffe38798000-7ffe3879a000 r-xp 00000000 00:00 0           [vdso]
+ffffffffff600000-ffffffffff601000 r-xp 00000000 00:00 0   [vsyscall]
+</pre></div>
+
+
+<p>非常有趣的是，堆区和bss节都没有了！当然其实还是有的。如果我们声明足够大的内存空间，地址空间里就会有bss和堆区，例如在静态/动态时各分配1GB的内存后的地址空间后pmap的结果(pmap的结果对人类更友好一些)：</p>
+<div class="codehilite"><pre><span></span>0000556e701c2000       4K r-x-- a.out
+0000556e703c2000       4K r---- a.out
+0000556e703c3000       4K rw--- a.out
+0000556e703c4000 1048576K rw---   [ anon ] # bss
+0000556eb0899000     132K rw---   [ anon ] # heap
+00007ff0fb664000 1048580K rw---   [ anon ] # another heap
+00007ff13b665000    1948K r-x-- libc-2.27.so
+00007ff13b84c000    2048K ----- libc-2.27.so
+00007ff13ba4c000      16K r---- libc-2.27.so
+00007ff13ba50000       8K rw--- libc-2.27.so
+00007ff13ba52000      16K rw---   [ anon ]
+00007ff13ba56000     156K r-x-- ld-2.27.so
+00007ff13bc68000       8K rw---   [ anon ]
+00007ff13bc7d000       4K r---- ld-2.27.so
+00007ff13bc7e000       4K rw--- ld-2.27.so
+00007ff13bc7f000       4K rw---   [ anon ]
+00007ffed7608000     132K rw---   [ stack ]
+00007ffed7722000      12K r----   [ anon ]
+00007ffed7725000       8K r-x--   [ anon ]
+ffffffffff600000       4K r-x--   [ anon ]
+</pre></div>
+
+
+<p>在这个例子里我们还看到，heap的内存是不连续的——有一部分被标记为了传统的UNIX heap，但1GB的内存空间实际是在地址空间的另外的位置分配的。</p>
+<div class="fenced fenced-green">
+<h4 id="_7">谁决定了堆区在哪里？ (二周目时阅读)</h4>
+<p>请阅读<a href="https://sourceware.org/glibc/wiki/MallocInternals">Malloc Internals</a>：</p>
+<ul>
+<li>If the request is large enough, <code>mmap()</code> is used to request memory directly from the operating system. Note that the threshold for mmap'ing is dynamic, unless overridden by  <code>M_MMAP_THRESHOLD</code> (see  <code>mallopt()</code> documentation), and there may be a limit to how many such mappings there can be at one time.</li>
+</ul>
+<p>此外因为bss里刚好是1GB的内存，因此bss恰好是1048576KB；但malloc/free需要额外记录分配信息，因此分配了多一页的(1048580KB)内存。</p>
+</div>
+<h3 id="_8">地址空间随机化</h3>
+<p>多次运行同一个程序，你会发现地址空间中各个部分的地址大体相同(处于同一范围)，但具体的值每次都不同，例如多次运行ldd：</p>
+<div class="codehilite"><pre><span></span>$ ldd ./a.out
+    linux-vdso.so.1 (0x00007ffe335bc000)
+    libc.so.6 =&gt; /lib/x86_64-linux-gnu/libc.so.6 (0x00007fe0a408f000)
+    /lib64/ld-linux-x86-64.so.2 (0x00007fe0e4682000)
+$ ldd ./a.out
+    linux-vdso.so.1 (0x00007fffc7dcb000)
+    libc.so.6 =&gt; /lib/x86_64-linux-gnu/libc.so.6 (0x00007f4354ac6000)
+    /lib64/ld-linux-x86-64.so.2 (0x00007f43950b9000)
+$ ldd ./a.out
+    linux-vdso.so.1 (0x00007ffc90bf3000)
+    libc.so.6 =&gt; /lib/x86_64-linux-gnu/libc.so.6 (0x00007f7046bd2000)
+    /lib64/ld-linux-x86-64.so.2 (0x00007f70871c5000)
+</pre></div>
+
+
+<p>甚至每次运行程序，代码/数据加载的位置也都不同(静态链接除外)。这是称为“Address Space Layout Randomization”的机制，能够降低缓冲区溢出攻击的成功概率，主流的操作系统在进入2000s之后都开始支持ASLR，甚至Linux内核本身的地址也是随机化的——内核中的这些问题一直都是“越狱”漏洞的重要来源。</p>
+<div class="fenced fenced-green">
+<h4 id="_9">真的吗？</h4>
+<p><code>/proc/kallsyms</code>有内核所有符号的地址，通过这个地址你可以看到内核是如何实现地址空间随机化的。</p>
+</div>
+<p><img alt="" src="./虚存抽象_files/ASLR.png" width="640px"></p>
+<p>有兴趣的同学可以继续阅读一些<a href="https://en.wikipedia.org/wiki/Address_space_layout_randomization">资料</a>，其中提供了很多有趣的参考文献。</p>
+<h2 id="_10">管理内存的系统调用</h2>
+<p>操作系统应该如何提供API，使得进程能够管理自己的地址空间呢？我们不妨考虑一些典型的场景：</p>
+<ul>
+<li>实现<code>dlopen()</code> (在crepl实验中用过)，将一个文件的一部分内容加载到进程的地址空间中</li>
+<li>堆栈的自动生长 - 用<code>ulimit</code>可以设置进程的堆栈为“无限大”，从而在程序运行过程中，大量的函数调用(例如上亿次递归)时访问的栈地址能被正确分配</li>
+<li><code>malloc(32);</code> - 分配一段很小的内存</li>
+<li><code>malloc(1024 * 1024 * 1024);</code> - 分配一段非常大的内存</li>
+</ul>
+<p>系统为我们提供了mmap系统调用(和相应的munmap)：</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="o">*</span><span class="nf">mmap</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">addr</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">length</span><span class="p">,</span> <span class="kt">int</span> <span class="n">prot</span><span class="p">,</span> <span class="kt">int</span> <span class="n">flags</span><span class="p">,</span>
+  <span class="kt">int</span> <span class="n">fd</span><span class="p">,</span> <span class="kt">off_t</span> <span class="n">offset</span><span class="p">);</span>
+</pre></div>
+
+
+<p>首先让我们来回顾一下操作系统中的对象。所谓对象，就是对数据(和操作)的封装——对象数据的部分通常可以看做是一个数组，例如C中的一个结构体，而这些对象都可以通过文件被访问。Everything is a file提供了统一的接口，实现应用程序访问操作系统中的对象，而对文件来说最重要的操作就是read和write。</p>
+<p>mmap把文件中的一部分(由<code>fd</code>文件描述符描述，从<code>offset</code>开始的<code>length</code>字节)“映射”到地址空间的<code>addr</code>位置，并设置保护权限为<code>prot</code>、映射模式为<code>flags</code>。</p>
+<p><img alt="" src="./虚存抽象_files/mmap.png" width="640px"></p>
+<p>一个API就实现了几乎所有的内存管理功能：</p>
+<ul>
+<li>如果不指定文件描述符，使用<code>MAP_ANONYMOUS</code> flag (不指定地址)，则相当于内存分配。mmap可以用来分配很大的内存，大家不妨在自己的机器上试一试，借助分页机制，map和物理内存一样大的空间瞬间就能完成。</li>
+<li>如果指定文件描述符，可以把几乎任何东西映射到地址空间里。这样动态链接库就不必在链接时把文件读取到地址空间了。事实上，对于映射到同一个文件的只读mmap，整个操作系统中都只有一份只读的拷贝。</li>
+</ul>
+<div class="fenced fenced-green">
+<h4 id="_11">试试把你的磁盘映射到地址空间里</h4>
+<p>以下程序把磁盘磁盘的128GB空间以只读的方式映射到地址空间里。即便只有8GB的物理内存，映射依然在瞬间完成，并且读取第一个扇区的内容，能够读出引导块的<code>0x55 0xaa</code> magic number——这真的是我们的磁盘！</p>
+<div class="codehilite"><pre><span></span><span class="kt">int</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+  <span class="c1">// BUG: no error checking</span>
+  <span class="kt">int</span> <span class="n">fd</span> <span class="o">=</span> <span class="n">open</span><span class="p">(</span><span class="s">"/dev/sda"</span><span class="p">,</span> <span class="n">O_RDONLY</span><span class="p">);</span>
+  <span class="kt">uint8_t</span> <span class="o">*</span><span class="n">disk</span> <span class="o">=</span> <span class="n">mmap</span><span class="p">(</span><span class="nb">NULL</span><span class="p">,</span> <span class="mi">137438953472LL</span><span class="p">,</span> <span class="n">PROT_READ</span><span class="p">,</span> <span class="n">MAP_SHARED</span><span class="p">,</span> <span class="n">fd</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"mapped address = %p</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">disk</span><span class="p">);</span>
+  <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">512</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"%02x "</span><span class="p">,</span> <span class="n">disk</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+
+</div>
+<h2 id="mmap">实现mmap</h2>
+<p>现代系统中的mmap是通过分页机制实现的。原则上，初始时，操作系统实际上并不需要为进程分配任何内存(在分页机制中标记进程地址空间中的所有地址均为不可访问)，只需要记住进程的地址空间映射关系即可，例如：</p>
+<div class="codehilite"><pre><span></span>0000000000400000    728K r-x-- a.out
+00000000006b6000     24K rw--- a.out
+00000000006bc000      4K rw--- a.out bss
+0000000000fa4000    140K rw--- [ heap ]
+00007ffed8844000    132K rw--- [ stack ]
+</pre></div>
+
+
+<p>当进程访问任何内存时，都会发生MMU异常(对x86系统来说，是Page Fault)，操作系统能捕获这个异常，并且进入操作系统代码执行。此时，操作系统代码能够找到异常地址对应的内存映射，例如：</p>
+<ul>
+<li>以读/执行方式访问<code>400000</code>附近的地址，a.out执行代码</li>
+<li>写入<code>6bc000</code>附近的地址，a.out的bss</li>
+</ul>
+<p>每一个地址都能被“翻译”成某个操作系统对象中的一段内存——此时我们只需要分配一个新的页面、调用read系统调用，将文件的内容写入、并且将新的页面重新映射进进程的地址空间，从异常返回即可。因此，mmap系统调用在实现时，并不需要实际映射任何内容，只需要更新操作系统内部的地址空间映射关系即可。如此，我们即便映射128GB的磁盘，或是分配8GB的物理内存，都只需要瞬间就能完成了。在Linux操作系统中，内存映射关系是用红黑树(区间树)维护的排序集合实现的，能够在<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mi>log</mi><mo>⁡</mo><mi>n</mi><mo>)</mo></mrow><annotation encoding="application/x-tex">O(\log n)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="strut" style="height:0.75em;"></span><span class="strut bottom" style="height:1em;vertical-align:-0.25em;"></span><span class="base"><span class="mord mathit" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mop">lo<span style="margin-right:0.01389em;">g</span></span><span class="mord mathit">n</span><span class="mclose">)</span></span></span></span>的时间内进行一次地址翻译。</p>
+<div class="fenced fenced-green">
+<h4 id="_12">算法导论上的数据结构实用了！</h4>
+<p>没错，区间树用来管理内存区域再合适不过了。所以不再抱怨问题求解课学的东西没用了吧？</p>
+</div>
+<h3 id="mmap-fork">mmap + fork</h3>
+<p>在实际的系统中，情况往往会更复杂一些。在之前我们简单的进程模型里，每个进程都有独立的地址空间，因此fork的时候地址空间是“完全复制”的。但在有了分页机制、虚拟存储和mmap后，我们发现fork的实现可以更高效一些——我们只要复制进程的内存映射，并且把父子进程的地址空间都标记成只读。此时，如果父子进程不再写入内存，就不会产生任何page fault，并且系统能够完全正确地运行。如果任何一方写入内存，都会引发缺页，缺页时把这一页面拷贝一份，把父子进程“分开”访问即可。</p>
+<p>基于分页机制，操作系统有一套完整、复杂的虚拟内存管理。copy-on-write的机制中也有一些有趣的细节，详细内容请仔细阅读教科书。</p>
+    </div>
+  </div>
+</center>
+
+<div class="footer-bottom">
+  <center>
+    <div class="copyright"> © 2019 Yanyan Jiang, All rights reserved </div>
+  </center>
+</div>
+
+<script>
+  $("math").each(function() {
+    var tex = $(this).text();
+    var html = katex.renderToString(tex, {
+      throwOnError: false
+    });
+    $(this).replaceWith(html);
+  });
+</script>
+
+    <script>
+      $("math").each(function() {
+        var tex = $(this).text();
+        var html = katex.renderToString(tex, {
+          throwOnError: false
+        });
+        $(this).replaceWith(html);
+      });
+    </script>
+  
+</body></html>

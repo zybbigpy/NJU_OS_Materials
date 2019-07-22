@@ -1,0 +1,208 @@
+
+<!-- saved from url=(0043)http://114.212.87.156:5000/wiki/OS2019_Sync -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="stylesheet" href="./同步_files/bootstrap.min.css">
+    <link rel="stylesheet" href="./同步_files/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="./同步_files/katex.min.css">
+    <link rel="stylesheet" href="./同步_files/wiki.css">
+    <link rel="stylesheet" href="./同步_files/codehilite.css">
+
+    <script src="./同步_files/katex.min.js.下载"></script>
+    <script src="./同步_files/jquery.min.js.下载"></script>
+    
+    
+    
+
+    <title>同步</title>
+  <style type="text/css">
+:root .content > a > .topline,
+:root .ch[onclick="ga(this,event)"]
+{ display: none !important; }</style></head>
+  <body>
+   
+   
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-header">
+    <div class="navbar-brand">
+      <a href="http://114.212.87.156:5000/wiki">Yanyan's Wiki</a>
+    </div>
+  </div>
+  <div class="collapse navbar-collapse">
+    <ul class="nav navbar-nav navbar-left"> 
+      <li><a href="http://114.212.87.156:5000/wiki/OS2019"><img class="textimg" src="./同步_files/logo-n.png"> 操作系统(2019)</a></li>
+      <li><a href="http://114.212.87.156:5000/wiki/ICS_NJU"><img class="textimg" height="18px" src="./同步_files/ics.png"> 加入我们</a></li>
+    </ul>
+  </div>
+</div>
+
+<center>
+  <div class="article-container">
+    <div class="article">
+      <h1 id="_1">同步</h1>
+<div class="fenced fenced-blue">
+<h4 id="_2">本讲阅读材料</h4>
+<p><a href="http://pages.cs.wisc.edu/~remzi/OSTEP/">教科书 (Operating Systems: Three Easy Pieces, OSTEP)</a>第29、30章。</p>
+</div>
+<p>教材的条件变量和信号量讲得非常棒，因此请大家仔细阅读。</p>
+<p>所谓“同步”就是在某个时刻，两个线程达成共识，典型的场景：</p>
+<ul>
+<li>NPY：等我洗个头就出门/等我打完这局游戏就来</li>
+<li>舍友：等我写完这段代码就吃饭</li>
+<li>导师：等我出差回来就讨论这个课题</li>
+</ul>
+<p>通常，实现忙等待(spinning)的同步通常都是非常简单的，你需要一个变量<code>done</code>，然后不断询问条件是否发生即可：</p>
+<div class="codehilite"><pre><span></span><span class="kt">int</span> <span class="n">done</span><span class="p">[</span><span class="n">nworkers</span><span class="p">];</span>
+
+<span class="kt">void</span> <span class="nf">worker</span><span class="p">(</span><span class="kt">int</span> <span class="n">tid</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">done</span><span class="p">[</span><span class="n">tid</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+  <span class="n">__sync_synchronize</span><span class="p">();</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+  <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">tid</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">tid</span> <span class="o">&lt;</span> <span class="n">nworkers</span><span class="p">;</span> <span class="n">tid</span><span class="o">++</span><span class="p">)</span>
+    <span class="k">while</span> <span class="p">(</span><span class="o">!</span><span class="n">done</span><span class="p">[</span><span class="n">tid</span><span class="p">]);</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>这个trick和我们之前实现互斥锁的非常像：用一个flag变量，<code>main_thread</code>不断地spin这个变量，直到读出它是<code>1</code>为止就知道这个程序执行正确了。</p>
+<div class="fenced fenced-green">
+<h4 id="_3">还记得编译优化的故事吗？</h4>
+<p>我们又回来了：</p>
+<div class="codehilite"><pre><span></span><span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+  <span class="n">sum</span><span class="o">++</span><span class="p">;</span>
+</pre></div>
+
+
+<p>这么个简单的循环，在<code>-O0</code>, <code>-O1</code>, <code>-O2</code>的时候有截然不同的行为，那上面那个spin loop……呢？</p>
+</div>
+<p>如果你定义<code>int done[];</code>，gcc会毫(非)不(常)客(开)气(心)地把这个循环优化成：</p>
+<div class="codehilite"><pre><span></span><span class="o">%</span><span class="n">eax</span> <span class="o">=</span> <span class="n">done</span><span class="p">[</span><span class="n">tid</span><span class="p">];</span>
+<span class="k">while</span> <span class="p">(</span><span class="o">%</span><span class="n">eax</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">;</span>
+</pre></div>
+
+
+<p>也就是说，如果在循环开始前<code>done[tid]</code>还没有准备好，这个循环就陷入了死循环。这是因为编译器在进行优化时，是默认只有线程本地的数据流(data flow)的——如果假设有线程间的任意数据流，那么几乎任何优化都不正确了。</p>
+<p>正确的解决办法是把<code>done</code>定义成<code>int volatile done[];</code>，禁止编译器优化对<code>done</code>的读写。<code>volatile</code>和<code>const</code>一样，都是C语言标准的一部分，有些公司在面试系统编程岗位的时候也会问这样的问题：</p>
+<div class="fenced fenced-green">
+<h4 id="_4">面试题</h4>
+<p><code>int f(void(* volatile const g)(int));</code>是什么？</p>
+<p>看起来是个<strong>非常无聊</strong>的面试题，就是考那些犄角旮旯里的没用的特性。如果我再追加一句：在系统软件中，这样的<code>volatile</code>表达式可以用来实现什么有用的特性？如果你能答上，那就是个不小的加分项了。</p>
+</div>
+<p>为了减少忙等待造成的浪费，我们需要一些额外的API，能在线程需要等待的时候进入睡眠状态，并在合适的时候唤醒——考虑到我们几乎总是“等待某件事”发生，设计“等待某个条件”这件事就显得非常合理了。</p>
+<h2 id="_5">条件变量</h2>
+<h3 id="_6">避免忙等待：条件变量</h3>
+<p>虽然费劲把这个问题做对了，但仍然没有完美地解决好：为了等待worker threads的结束，主线程在一个spin loop里，白浪费了很多CPU资源。因此自然会想，如果库函数/操作系统能帮助我们实现这样的同步机制就好了——条件变量(condition variables, CV)：</p>
+<div class="codehilite"><pre><span></span><span class="kt">int</span> <span class="nf">pthread_cond_wait</span><span class="p">(</span><span class="n">pthread_cond_t</span> <span class="o">*</span><span class="p">,</span> <span class="n">pthread_mutex_t</span> <span class="o">*</span><span class="n">mutex</span><span class="p">);</span>
+  <span class="c1">// Unlock the specified mutex, wait for a condition, and relock the mutex.</span>
+<span class="kt">int</span> <span class="nf">pthread_cond_broadcast</span><span class="p">(</span><span class="n">pthread_cond_t</span> <span class="o">*</span><span class="n">cond</span><span class="p">);</span>
+  <span class="c1">// Unblock all threads currently blocked on the specified condition variable.</span>
+<span class="kt">int</span> <span class="nf">pthread_cond_signal</span><span class="p">(</span><span class="n">pthread_cond_t</span> <span class="o">*</span><span class="n">cond</span><span class="p">);</span>
+  <span class="c1">// Unblock at least one of the threads blocked on the specified condition variable.</span>
+</pre></div>
+
+
+<p><a href="http://pages.cs.wisc.edu/~remzi/OSTEP/threads-cv.pdf">参考书</a>提供了非常详尽的条件变量解释，包括课堂上已经讲过的一些不work的例子。花一点时间理解这些例子，这是宝贵的并发编程经验，建议大家仔细阅读参考书的这一部分。</p>
+<p>在大家试图去证明每个程序正确，或者试图找反例说明它错误的时候，免不了会去<strong>尝试各种并发程序可能的调度</strong>。在尝试的过程中，你一定会发现以下几个有趣的现象：</p>
+<ol>
+<li>“程序是个状态机”是个不错的想法。程序也就是每次执行一步，从初始状态开始，就很自然地定义出了程序的状态空间(像是一个搜索树)。</li>
+<li>互斥锁极大的降低了理解并发程序执行的难度——我们可以把被锁保护的部分看作一个整体，它们要么执行，要么不执行(由lock/unlock的语义保证)。就像课堂上画的框框——它实现了搜索空间的约减：我们其实找到了状态空间更好的一种表示方法！</li>
+<li>并发程序的全局状态是解开问题的钥匙。一般来说，为了指出并发程序的问题，只需要程序达到某个特定的状态，然后发生一些线程之间的交互。这有点类似于大家做OJ的体验：需要尽力枚举各种各样的极端情况。</li>
+</ol>
+<p>无论如何，更好地测试并发程序，或是证明并发程序正确都是非常具有挑战性的工作。即便在今天，我们设计的测试算法仍然能够自动检出真实程序中各种奇妙的并发bug——也就是说，开源软件的开发者在写对并发程序这件事上，也许并不比大家做得好。</p>
+<h3 id="-">生产者-消费者问题</h3>
+<p>特别值得一提的是其中的“生产者-消费者”问题——这是解决现实中并发问题(底层实现)中最有用的模型之一——在这个模型里，生产者和消费者的逻辑实现了解耦，生产者只负责产生对象(服务请求/计算任务/...)；消费者只负责处理。在很多实际的并发程序中你也能看到类似的模式，例如各种响应请求的Web/数据库服务器。</p>
+<h2 id="_7">信号量</h2>
+<p>复习我们之前实现生产者/消费者问题时使用的工具：</p>
+<ul>
+<li>互斥锁<code>mutex</code>用来保证代码的原子性；</li>
+<li>条件变量<code>empty</code>和<code>fill</code>用来表示是否有空/满的缓冲区；</li>
+<li><code>count</code>计数器用来维护当前空余的缓冲区的数量。</li>
+</ul>
+<p>信号量就是“合三为一”的线程同步手段。信号量也是一个结构体<code>sem_t</code>，内部包含一个计数器<code>count</code>，它的行为是：</p>
+<p>P(原子)操作时，<code>count</code>减1，如果计数器数值小于零则线程睡眠等待。</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">P</span><span class="p">(</span><span class="n">sem_t</span> <span class="o">&amp;</span><span class="n">sem</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">sem</span><span class="o">-&gt;</span><span class="n">count</span><span class="o">--</span><span class="p">;</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">sem</span><span class="o">-&gt;</span><span class="n">count</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">push</span><span class="p">(</span><span class="n">sem</span><span class="o">-&gt;</span><span class="n">queue</span><span class="p">,</span> <span class="n">current</span><span class="p">);</span>
+    <span class="n">suspend</span><span class="p">();</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>V(原子)操作时，<code>count</code>加一，同时如果有正在睡眠的线程，则把睡眠的线程唤醒。</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">V</span><span class="p">(</span><span class="n">sem_t</span> <span class="o">&amp;</span><span class="n">sem</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">sem</span><span class="o">-&gt;</span><span class="n">count</span><span class="o">++</span><span class="p">;</span>
+  <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">empty</span><span class="p">(</span><span class="n">sem</span><span class="o">-&gt;</span><span class="n">queue</span><span class="p">))</span> <span class="p">{</span>
+    <span class="n">wakeup</span><span class="p">(</span><span class="n">pop</span><span class="p">(</span><span class="n">sem</span><span class="o">-&gt;</span><span class="n">queue</span><span class="p">));</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<div class="fenced fenced-green">
+<h4 id="_8">用条件变量、互斥锁和计数器实现信号量</h4>
+<p>信号量的P/V操作能够很自然地用条件变量<code>cond</code>、互斥锁<code>mutex</code>和计数器<code>count</code>实现。你可以试试：你的实现最好能在条件变量被“假唤醒”的前提下仍然正确。</p>
+</div>
+<p>实际上，信号量可以理解成一个锁(手环)的“池子”，计数器就是<strong>锁的数量</strong>。然后把P/V操作直观地理解：</p>
+<ul>
+<li>P操作就是从池子里取走一把锁。如果取成功，线程继续执行，如果取失败，就必须等待。</li>
+<li>V操作就是把一把锁放进池子里。这时候如果有线程在等锁，那个线程可以取走这把锁执行。</li>
+</ul>
+<p></p><center><img alt="" src="./同步_files/sem.jpg"></center><p></p>
+<p>池子里的“锁”就是用来同步的资源。如果<code>count</code>的初始值为1，我们可以直接把P/V当作互斥锁来使用——池子里只有一把锁，进入临界区必须取得锁，临界区结束后归还。</p>
+<p>信号量可以说是为生产者/消费者问题量身定制的同步原语：</p>
+<div class="codehilite"><pre><span></span><span class="n">sem_t</span> <span class="n">empty</span> <span class="o">=</span> <span class="n">SEM_INIT</span><span class="p">(</span><span class="n">n</span><span class="p">);</span>
+<span class="n">sem_t</span> <span class="n">fill</span> <span class="o">=</span> <span class="n">SEM_INIT</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">producer</span><span class="p">()</span> <span class="p">{</span>
+  <span class="k">while</span> <span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">P</span><span class="p">(</span><span class="o">&amp;</span><span class="n">empty</span><span class="p">);</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"("</span><span class="p">);</span>
+    <span class="n">V</span><span class="p">(</span><span class="o">&amp;</span><span class="n">fill</span><span class="p">);</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">consumer</span><span class="p">()</span> <span class="p">{</span>
+  <span class="k">while</span> <span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">P</span><span class="p">(</span><span class="o">&amp;</span><span class="n">fill</span><span class="p">);</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">")"</span><span class="p">);</span>
+    <span class="n">V</span><span class="p">(</span><span class="o">&amp;</span><span class="n">empty</span><span class="p">);</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>这就搞定了！如果我们用刚才锁的池子的方式来理解，就是生产者必须从<code>empty</code>里取得一把锁，即保证缓冲区中有空位，然后向<code>fill</code>归还一把锁；而消费者则执行完全对称的操作，实现<code>P(empty) -&gt; V(fill) -&gt; P(fill) -&gt; V(empty) -&gt; ...</code>的生产-消费循环。同时因为池子里的锁总共只有<span class="katex"><span class="katex-mathml"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>n</mi><mi>n</mi></mrow><annotation encoding="application/x-tex">nn</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="strut" style="height:0.43056em;"></span><span class="strut bottom" style="height:0.43056em;vertical-align:0em;"></span><span class="base"><span class="mord mathit">n</span><span class="mord mathit">n</span></span></span></span></span><span class="katex-html" aria-hidden="true"><span class="strut" style="height:0.43056em;"></span><span class="strut bottom" style="height:0.43056em;vertical-align:0em;"></span><span class="base"><span class="mord mathit">n</span></span></span></span>把，因此缓冲区操作总是成功。</p>
+<p>当然在上面的例子里，还有一个潜在的问题：所有的<code>printf</code>都可能是并发的。因为libc保证了<code>printf</code>的线程安全性，所以上述打印括号序列的代码是正确的。然而如果你在生产者-消费者问题中使用了缓冲区(例如循环队列)，那就需要格外小心队列<code>push</code>和<code>pop</code>的线程安全性。</p>
+    </div>
+  </div>
+</center>
+
+<div class="footer-bottom">
+  <center>
+    <div class="copyright"> © 2019 Yanyan Jiang, All rights reserved </div>
+  </center>
+</div>
+
+<script>
+  $("math").each(function() {
+    var tex = $(this).text();
+    var html = katex.renderToString(tex, {
+      throwOnError: false
+    });
+    $(this).replaceWith(html);
+  });
+</script>
+
+    <script>
+      $("math").each(function() {
+        var tex = $(this).text();
+        var html = katex.renderToString(tex, {
+          throwOnError: false
+        });
+        $(this).replaceWith(html);
+      });
+    </script>
+  
+</body></html>

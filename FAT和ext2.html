@@ -1,0 +1,146 @@
+
+<!-- saved from url=(0046)http://114.212.87.156:5000/wiki/OS2019_FSImpl2 -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="stylesheet" href="./FAT和ext2_files/bootstrap.min.css">
+    <link rel="stylesheet" href="./FAT和ext2_files/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="./FAT和ext2_files/katex.min.css">
+    <link rel="stylesheet" href="./FAT和ext2_files/wiki.css">
+    <link rel="stylesheet" href="./FAT和ext2_files/codehilite.css">
+
+    <script src="./FAT和ext2_files/katex.min.js.下载"></script>
+    <script src="./FAT和ext2_files/jquery.min.js.下载"></script>
+    
+    
+    
+
+    <title>FAT和ext2</title>
+  <style type="text/css">
+:root .content > a > .topline,
+:root .ch[onclick="ga(this,event)"]
+{ display: none !important; }</style></head>
+  <body>
+   
+   
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-header">
+    <div class="navbar-brand">
+      <a href="http://114.212.87.156:5000/wiki">Yanyan's Wiki</a>
+    </div>
+  </div>
+  <div class="collapse navbar-collapse">
+    <ul class="nav navbar-nav navbar-left"> 
+      <li><a href="http://114.212.87.156:5000/wiki/OS2019"><img class="textimg" src="./FAT和ext2_files/logo-n.png"> 操作系统(2019)</a></li>
+      <li><a href="http://114.212.87.156:5000/wiki/ICS_NJU"><img class="textimg" height="18px" src="./FAT和ext2_files/ics.png"> 加入我们</a></li>
+    </ul>
+  </div>
+</div>
+
+<center>
+  <div class="article-container">
+    <div class="article">
+      <h1 id="fatext2">FAT和ext2</h1>
+<div class="fenced fenced-blue">
+<h4 id="_1">本讲阅读材料</h4>
+<p><a href="http://pages.cs.wisc.edu/~remzi/OSTEP/">教科书 (Operating Systems: Three Easy Pieces, OSTEP)</a>第40章。</p>
+</div>
+<p>文件系统实现关注以下问题：</p>
+<ul>
+<li>如何在磁盘上分配/回收数据块</li>
+<li>如何用数据块表示文件(链表、树、……)</li>
+<li>如何用文件表示目录(线性表、哈希表、索引、……)</li>
+<li>文件的元数据如何存储、如何管理文件的id</li>
+</ul>
+<p>FAT和ext2就是其中很有代表性的两类。</p>
+<h2 id="fat">FAT</h2>
+<p>FAT文件系统的基本思想是使用链表管理所有的数据块。FAT文件系统把若干个连续的扇区(sector)作为一个簇(cluster)，也就是我们所说的管理存储的基本单位“块”，因此如果我们希望表示一个文件，我们只需要知道：</p>
+<ul>
+<li>文件的第一块的编号</li>
+<li>对于每一块，它下一块的编号</li>
+</ul>
+<p>因此，FAT文件系统专门在磁盘中开辟一个区域(File Allocation Table, FAT)，来存储每一块的下一块编号。除了编号之外，还有两种特殊的编号：</p>
+<ul>
+<li>free (0, 该块可以使用)</li>
+<li>EOF (-1, 该块代表了某个文件的末尾)</li>
+</ul>
+<p>这样，FAT还可以兼用于block bitmap，用于分配/回收数据块。此外，FAT文件系统不支持链接，因此inode (元数据)可以直接存储在目录里。</p>
+<p></p><center><img alt="" src="./FAT和ext2_files/fat32-dirent.png" width="540px"></center><p></p>
+<p>关于FAT的一些其他细节，大家会在<a href="http://114.212.87.156:5000/wiki/OS2019_M5">Mini Lab 5</a>中得到进一步的了解。</p>
+<h2 id="ext2">ext2</h2>
+<p>ext2的设计和教科书中的文件系统几乎一致，例如它的inode定义：</p>
+<div class="codehilite"><pre><span></span><span class="k">struct</span> <span class="n">ext2_inode</span> <span class="p">{</span>
+  <span class="n">__u16</span>   <span class="n">i_mode</span><span class="p">;</span>         <span class="cm">/* File type and access rights */</span>
+  <span class="n">__u16</span>   <span class="n">i_uid</span><span class="p">;</span>          <span class="cm">/* Low 16 bits of Owner Uid */</span>
+  <span class="n">__u32</span>   <span class="n">i_size</span><span class="p">;</span>         <span class="cm">/* Size in bytes */</span>
+  <span class="n">__u32</span>   <span class="n">i_atime</span><span class="p">;</span>        <span class="cm">/* Access time */</span>
+  <span class="n">__u32</span>   <span class="n">i_ctime</span><span class="p">;</span>        <span class="cm">/* Creation time */</span>
+  <span class="n">__u32</span>   <span class="n">i_mtime</span><span class="p">;</span>        <span class="cm">/* Modification time */</span>
+  <span class="n">__u32</span>   <span class="n">i_dtime</span><span class="p">;</span>        <span class="cm">/* Deletion Time */</span>
+  <span class="n">__u16</span>   <span class="n">i_gid</span><span class="p">;</span>          <span class="cm">/* Low 16 bits of Group Id */</span>
+  <span class="n">__u16</span>   <span class="n">i_links_count</span><span class="p">;</span>  <span class="cm">/* Links count */</span>
+  <span class="n">__u32</span>   <span class="n">i_blocks</span><span class="p">;</span>       <span class="cm">/* Blocks count */</span>
+  <span class="n">__u32</span>   <span class="n">i_flags</span><span class="p">;</span>        <span class="cm">/* File flags */</span>
+  <span class="p">...</span>
+  <span class="n">__u32</span>   <span class="n">i_block</span><span class="p">[</span><span class="n">EXT2_N_BLOCKS</span><span class="p">];</span>  <span class="cm">/* Pointers to blocks */</span>
+  <span class="p">...</span>
+<span class="p">};</span>
+</pre></div>
+
+
+<p>这个设计的精妙之处是使用了多个级别的索引：</p>
+<p></p><center><img alt="" src="./FAT和ext2_files/ext2-inode.gif" width="420px"></center><p></p>
+<p>虽然在inode中付出了相对FAT较多的空间(空间相比文件实际占用的来说还是小很多)，但：</p>
+<ul>
+<li>对于小文件(12个块以内，4KB块是48KB)，直接索引，没有额外的空间开销</li>
+<li>对于中等文件，只使用一级索引</li>
+<li>对于更大的文件(但更少)，使用更多级别的索引</li>
+</ul>
+<div class="fenced fenced-green">
+<h4 id="ext2_1">ext2最大文件有多大？</h4>
+<p>请查阅ext2的相关资料，并自己计算ext2文件系统中最大文件的大小，并与网络上的说法进行对比。</p>
+</div>
+<p>与我们在Linux系统中，执行<code>stat a.txt</code>中所看到的内容非常相似。由于一个文件可能有多个名字(链接)，把inode存放在目录中就会带来别名的问题，因此与教科书上一样，ext2是在专门的空间中连续地存储inodes并用bitmap管理。连续存储inode能够提高文件访问的局部性。</p>
+<div class="fenced fenced-green">
+<h4 id="inode">访问inode？</h4>
+<p>如果你仔细观察以下两个命令输出的结果：</p>
+<div class="codehilite"><pre><span></span>$ strace ls
+$ strace ls -l
+</pre></div>
+
+
+<p>你会发现<code>ls -l</code>执行的系统调用要比<code>ls</code>多上不少——为了打印文件的详细信息，必须读取它的inode。因此，把inodes连续存储(并且把邻近的inodes存储在邻近的区域)能有效地减少磁盘的读取次数。</p>
+</div>
+<p>与FAT类似，ext2的目录中按顺序存储其中文件/子目录的名字和inode编号。因为不需要元数据信息，所以ext2的目录文件结构相当简单：</p>
+<p></p><center><img alt="" src="./FAT和ext2_files/ext2-dirent.jpg" width="500px"></center><p></p>
+<h2 id="_2">优化存储访问</h2>
+<p>请阅读教科书40.7节内容。</p>
+    </div>
+  </div>
+</center>
+
+<div class="footer-bottom">
+  <center>
+    <div class="copyright"> © 2019 Yanyan Jiang, All rights reserved </div>
+  </center>
+</div>
+
+<script>
+  $("math").each(function() {
+    var tex = $(this).text();
+    var html = katex.renderToString(tex, {
+      throwOnError: false
+    });
+    $(this).replaceWith(html);
+  });
+</script>
+
+    <script>
+      $("math").each(function() {
+        var tex = $(this).text();
+        var html = katex.renderToString(tex, {
+          throwOnError: false
+        });
+        $(this).replaceWith(html);
+      });
+    </script>
+  
+</body></html>

@@ -1,0 +1,132 @@
+
+<!-- saved from url=(0048)http://114.212.87.156:5000/wiki/OS2019_FSConcept -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="stylesheet" href="./文件系统概念_files/bootstrap.min.css">
+    <link rel="stylesheet" href="./文件系统概念_files/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="./文件系统概念_files/katex.min.css">
+    <link rel="stylesheet" href="./文件系统概念_files/wiki.css">
+    <link rel="stylesheet" href="./文件系统概念_files/codehilite.css">
+
+    <script src="./文件系统概念_files/katex.min.js.下载"></script>
+    <script src="./文件系统概念_files/jquery.min.js.下载"></script>
+    
+    
+    
+
+    <title>文件系统概念</title>
+  <style type="text/css">
+:root .content > a > .topline,
+:root .ch[onclick="ga(this,event)"]
+{ display: none !important; }</style></head>
+  <body>
+   
+   
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-header">
+    <div class="navbar-brand">
+      <a href="http://114.212.87.156:5000/wiki">Yanyan's Wiki</a>
+    </div>
+  </div>
+  <div class="collapse navbar-collapse">
+    <ul class="nav navbar-nav navbar-left"> 
+      <li><a href="http://114.212.87.156:5000/wiki/OS2019"><img class="textimg" src="./文件系统概念_files/logo-n.png"> 操作系统(2019)</a></li>
+      <li><a href="http://114.212.87.156:5000/wiki/ICS_NJU"><img class="textimg" height="18px" src="./文件系统概念_files/ics.png"> 加入我们</a></li>
+    </ul>
+  </div>
+</div>
+
+<center>
+  <div class="article-container">
+    <div class="article">
+      <h1 id="_1">文件系统概念</h1>
+<div class="fenced fenced-blue">
+<h4 id="_2">本讲阅读材料</h4>
+<p><a href="http://pages.cs.wisc.edu/~remzi/OSTEP/">教科书 (Operating Systems: Three Easy Pieces, OSTEP)</a>第39章。</p>
+</div>
+<h2 id="_3">为什么需要文件系统</h2>
+<p>操作系统是管理程序执行的程序——程序的运行需要二进制代码、静态数据、动态链接库。此外，程序被开发出来，本质还是用于处理我们的数据：模拟数值运算、播放电影等等。程序连同数据都需要存储在持久存储介质中(之前课程中的磁盘、光盘、SSD等)。</p>
+<p>我们已经知道从存储介质到设备驱动程序的抽象——一个存储设备，理论上可以看作是一个字节的序列，经过设备驱动程序的封装，我们可以在操作系统的代码中通过read, write, ioctl等操作访问它：</p>
+<p></p><center><img alt="" src="./文件系统概念_files/under-fs.png" width="640px"></center><p></p>
+<p>同理，我们可以让应用程序直接访问I/O设备，即让应用程序直接和设备驱动打交道(在早期的系统，尤其是单用户、单任务系统，这么做并没有什么不妥。直接在设备上用库函数保存数据即可)。但在现代系统中，这并不是一个好主意：</p>
+<ul>
+<li>多个应用程序共享一个设备时，它们需要进行并发控制，小心地协调各个应用程序的数据。大家想必已经被Lab里的并发bug折磨得死去活来了，让应用程序考虑这些，这不是要程序员的小命么？</li>
+<li>让每个程序都直接操纵硬件，相当的不灵活。平时我们编程时，写一个<code>printf()</code>，直接运行可以输出到终端；重定向就可以到磁盘。如果每个<code>printf</code>都必须指定一个设备，每换一个运行环境都要修改。</li>
+<li>即便不考虑多用户之间的隔离，直接访问磁盘也是非常危险的：如果程序中不小心有bug导致写入垃圾数据，可能抹掉其他应用程序的数据。</li>
+</ul>
+<p>我们在编程时从来没有遇到过这些问题——是因为设备之上的<strong>文件系统</strong>层帮助我们完成了适当的抽象，建立了“目录”、“文件”、“文件描述符”的概念体系，使得我们在保存数据时不必关心底层设备的细节。</p>
+<h2 id="_4">文件：存储设备虚拟化</h2>
+<p>我们需要一个抽象层，来更好地管理存储设备(和其他设备)。很自然地，CPU能虚拟化、内存能虚拟化，存储设备也一样能虚拟化！文件系统可以理解成是一种存储设备的虚拟化机制。</p>
+<p>所以让我们看一看磁盘。在设备驱动之上，磁盘可以看成是一个很长的字节序列(<code>uint8_t disk[DISK_CAP]</code>)。如果要把一个磁盘虚拟成多个磁盘，我们不妨让每一个虚拟磁盘都是一个可以变长的(相对较小)的字节序列：</p>
+<div class="codehilite"><pre><span></span><span class="k">using</span> <span class="n">vdisk_t</span> <span class="o">=</span> <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">uint8_t</span><span class="o">&gt;</span>
+</pre></div>
+
+
+<p>而“文件系统”就是管理系统中各种虚拟磁盘的机制，我们不妨把它实现成是一个“路径名”到“虚拟磁盘”的映射：</p>
+<div class="codehilite"><pre><span></span><span class="k">using</span> <span class="n">filesystem_t</span> <span class="o">=</span> <span class="n">std</span><span class="o">::</span><span class="n">map</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">,</span> <span class="n">disk_t</span><span class="o">&gt;</span><span class="p">;</span>
+</pre></div>
+
+
+<p>让我们来重新认识一下我们熟悉的文件系统。例如我们熟悉的<code>/etc/apt/sources.list</code>文件。我们虽然很习惯地认为它是“根目录”下的“etc”目录下的“apt”目录下的一个名为“sources.list”的<strong>文件</strong>，但这的确不妨碍我们把它理解成一个名为<code>/etc/apt/sources.list</code>的<strong>虚拟存储设备</strong>(磁盘)，我们可以对这个虚拟磁盘中执行写入数据、扩展大小等操作。</p>
+<p>而实现存储设备的虚拟化与实现虚拟存储非常类似——文件系统是保存在持久设备上的数据结构。我们需要在物理磁盘上管理文件系统的“元数据”(metadata)：如何从文件名找到对应的虚拟磁盘。</p>
+<p></p><center><img alt="" src="./文件系统概念_files/fs-kv.png" width="640px"></center><p></p>
+<h2 id="_5">用目录管理文件</h2>
+<p>为了方便大家找到文件(不用每次都输入绝对路径)，把文件系统设计成树形的结构也是非常自然的——这类似于人工设计的“决策树”。在每一级目录，我们都把文件按照某个属性分类，这样就可以很容易地找到某个文件所在的位置。UNIX/Linux甚至为此制定了<a href="http://refspecs.linuxfoundation.org/FHS_3.0/fhs/index.html">File System Hierarchy</a>标准，规定了文件系统目录树中各个目录的功能：</p>
+<ul>
+<li>/boot - 系统启动数据</li>
+<li>/bin - 应用程序 (bash, ps, grep, ...)</li>
+<li>/dev - 设备文件</li>
+<li>/sbin - 系统程序 (mkfs, fdisk, ifconfig, dhclient, ...)</li>
+<li>/etc - 配置文件 (= "etcetera")</li>
+<li>/home - 用户目录</li>
+<li>/lib - 库文件 (libc.so, libpthread.so, ...)</li>
+<li>/media - 可移动设备 (cdrom, USB flash ,...)</li>
+<li>/usr - 用户程序 (/usr/bin/, /usr/lib/, /usr/local/)</li>
+<li>/var - 可变文件 (logs, snapshots, ...)</li>
+<li>/tmp - 临时文件</li>
+</ul>
+<p>所以，UNIX/Linux的确是很user-friendly的——所有Linux系统工具几乎都遵循统一的概念体系和接口设计。只要你熟知游戏规则，即便对不太熟悉的软件，你也能很快上手。</p>
+<h2 id="everything-is-a-file">Everything is a File</h2>
+<p>最早文件系统(目录和文件)被设计出来管理磁盘。但很快大家就发现，“虚拟磁盘”并不一定要保存在磁盘上。访问文件的open, read, write, ...可以用来管理任何数据</p>
+<ul>
+<li>一个I/O设备，例如物理磁盘，它完全可以看作是一个虚拟磁盘</li>
+<li>一个字符I/O设备，例如终端，也可以用read/write接口访问</li>
+<li>虚拟的设备(例如<code>/dev/random</code>)，只要实现了read/write接口，也可以当作文件访问</li>
+<li>操作系统里的对象，例如进程、总线、操作系统配置也是数据，也可以用read/write接口访问</li>
+</ul>
+<p>这样一来，everything is a file的设计就很自然了——我们无须实现更多的操作系统API (例如<code>GetProcessSnapshot()</code>)，只要复用文件系统的接口，就能让应用程序管理操作系统的方方面面。Everything is a file的设计贯彻了UNIX哲学：</p>
+<ul>
+<li>每个程序只做一件事，并把事情的方方面面都做好；</li>
+<li>应用之间尽量用文本传递数据。</li>
+</ul>
+<p>这么做损失了一些性能 (例如得到所有进程的效率明显不如<code>GetProcessSnapshot()</code>，还需要文本的解析)，但“操作系统”显得对用户更友好一些，不需要层层封装的库函数和工具程序，我们能更容易地体会和把玩一个鲜活的操作系统。</p>
+    </div>
+  </div>
+</center>
+
+<div class="footer-bottom">
+  <center>
+    <div class="copyright"> © 2019 Yanyan Jiang, All rights reserved </div>
+  </center>
+</div>
+
+<script>
+  $("math").each(function() {
+    var tex = $(this).text();
+    var html = katex.renderToString(tex, {
+      throwOnError: false
+    });
+    $(this).replaceWith(html);
+  });
+</script>
+
+    <script>
+      $("math").each(function() {
+        var tex = $(this).text();
+        var html = katex.renderToString(tex, {
+          throwOnError: false
+        });
+        $(this).replaceWith(html);
+      });
+    </script>
+  
+</body></html>

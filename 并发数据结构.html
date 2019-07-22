@@ -1,0 +1,153 @@
+
+<!-- saved from url=(0051)http://114.212.87.156:5000/wiki/OS2019_ConcurrentDS -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="stylesheet" href="./并发数据结构_files/bootstrap.min.css">
+    <link rel="stylesheet" href="./并发数据结构_files/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="./并发数据结构_files/katex.min.css">
+    <link rel="stylesheet" href="./并发数据结构_files/wiki.css">
+    <link rel="stylesheet" href="./并发数据结构_files/codehilite.css">
+
+    <script src="./并发数据结构_files/katex.min.js.下载"></script>
+    <script src="./并发数据结构_files/jquery.min.js.下载"></script>
+    
+    
+    
+
+    <title>并发数据结构</title>
+  <style type="text/css">
+:root .content > a > .topline
+{ display: none !important; }</style><style type="text/css">
+:root .ch[onclick="ga(this,event)"]
+{ display: none !important; }</style></head>
+  <body>
+   
+   
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-header">
+    <div class="navbar-brand">
+      <a href="http://114.212.87.156:5000/wiki">Yanyan's Wiki</a>
+    </div>
+  </div>
+  <div class="collapse navbar-collapse">
+    <ul class="nav navbar-nav navbar-left"> 
+      <li><a href="http://114.212.87.156:5000/wiki/OS2019"><img class="textimg" src="./并发数据结构_files/logo-n.png"> 操作系统(2019)</a></li>
+      <li><a href="http://114.212.87.156:5000/wiki/ICS_NJU"><img class="textimg" height="18px" src="./并发数据结构_files/ics.png"> 加入我们</a></li>
+    </ul>
+  </div>
+</div>
+
+<center>
+  <div class="article-container">
+    <div class="article">
+      <h1 id="_1">并发数据结构</h1>
+<div class="fenced fenced-blue">
+<h4 id="_2">本讲阅读材料</h4>
+<p><a href="http://pages.cs.wisc.edu/~remzi/OSTEP/">教科书 (Operating Systems: Three Easy Pieces, OSTEP)</a>第29章。</p>
+</div>
+<p>当我们谈数据结构的时候，其实分成两个部分：</p>
+<ul>
+<li>抽象数据类型(ADT)，即我们使用数据结构时调用的接口，例如一个整数的集合，支持<code>insert(x)</code>, <code>delete(x)</code>和<code>rank(x)</code>返回集合中小于等于<code>x</code>的元素个数。</li>
+<li>数据存储和操作的实现，例如数据存储在内存中的layout、操作实现的方法等。</li>
+</ul>
+<p>我们已经学过很多经典的抽象数据类型：栈、队列、集合……；也学习过很多它们的高效实现：数组、链表、红黑树、Fibonacci堆……，我们不妨就混称为数据结构。我们在描述它们的时候，都使用类似于单处理器计算机执行指令的伪代码；并且我们在分析数据结构的性能时，通常也采用关键的操作数量(例如比较、赋值等)。</p>
+<div class="fenced fenced-green">
+<h4 id="_3">当数据结构被并发访问的时候，我们还需要考虑什么？</h4>
+<p>换句话说，我们的系统中可能有多个线程，它们每个可能同时对一个数据结构操作，例如向一个集合中添加元素。这时候，我们首先必保证的是数据结构在并发意义下的正确性。鉴于之前我们的经验，还是上个锁比较安全：</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">insert</span><span class="p">(</span><span class="n">Set</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="kt">int</span> <span class="n">x</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">spin_lock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">lock</span><span class="p">);</span>
+  <span class="n">insert_serial</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">x</span><span class="p">);</span>
+  <span class="n">spin_unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">lock</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>这样我们可以把并发数据结构转换为了串行执行，从而能保证其正确性。在大部分时候，这样的处理都是很安全的，但有时候多个线程对数据结构的访问非常频繁，此时再使用锁，就等于让其他线程白白等待了。</p>
+</div>
+<div class="fenced fenced-red">
+<h4 id="_4">并发数据结构有多难？</h4>
+<p>一旦进入并发领域，事情就非常微妙了。做一个好的数据结构，哪怕它很简单，就可以搞定一篇顶级的论文，无论是理论还是系统——在<a href="https://www.cs.princeton.edu/~mfreed/docs/cuckoo-eurosys14.pdf">这篇文章</a>里，连硬件的支持都用上了。很酷是不是？</p>
+<p>因此在绝大部分时候，或者直到你对并发有了足够了解之后，用简单的锁来保护你的数据结构，都是很不错的选择。</p>
+</div>
+<h2 id="_5">并发数据结构的性能</h2>
+<p>总体来说，提高并发数据结构性能的关键是减少在锁上拥塞(contention)的时间——如果宝贵的时间都花在了spin上却没有实质的进展，那就是白白浪费了多处理器的计算力了。更糟糕的是，设计不当的算法甚至有可能让cache line在处理器之间来回“弹跳”，导致多处理器下的性能甚至低于单处理器。</p>
+<p>想试试？让我们以malloc/free为例吧，这是大家实验的内容。</p>
+<h3 id="mallocfree">malloc/free</h3>
+<p>内存的分配和释放，利用底层系统提供的机制(通常能够用来分配很大的内存)，实现各种大小、类型对象的分配和释放。两个典型的场景：</p>
+<ul>
+<li>在操作系统上，我们通过sbrk/mmap系统调用请求一大段内存。在这两个系统调用的基础上实现malloc/free (libc)，管理堆区中各式各样的对象——结构体、链表节点、字符串、……</li>
+<li>在计算机硬件上，我们直接访问物理内存(系统中所有的物理内存都归操作系统管理)。例如在AbstractMachine中，可用的内存就可以看成是一个连续的字节序列。</li>
+</ul>
+<h3 id="_6">性能调优</h3>
+<div class="fenced fenced-red">
+<h4 id="workload">抛开workload谈优化就是耍流氓</h4>
+<p>对于同一个集合数据结构来说，99%读1%写；1%读99%写，这两种情况下的算法设计能一样吗？不同的应用场景很可能有不同的需求——甚至有时候总是一个线程写，很多线程读。如果希望调优程序的性能，一定要先了解workloads。</p>
+<p>这也是为什么很多研究都需要<a href="https://en.wikipedia.org/wiki/Benchmark_(computing)">基准程序</a>，它们代表了各种典型应用场景下的workloads。“不服跑个分”对吧？</p>
+</div>
+<p>那怎么从程序的运行或者基准程序得到workloads呢？课堂上我们给了一个很短的脚本，它把程序的stdout丢弃，并且把ltrace的输出从stderr重定向到stdout。</p>
+<div class="codehilite"><pre><span></span><span class="ch">#!/bin/bash</span>
+
+trace<span class="o">()</span> <span class="o">{</span>
+  <span class="c1"># ltrace outputs to stderr, so discard stdout</span>
+  <span class="c1"># -f: trace threads/sub-processes</span>
+  <span class="c1"># -e 'malloc+free-@libc.so*': only trace malloc/free</span>
+  ltrace -f -e <span class="s1">'malloc+free-@libc.so*'</span> <span class="nv">$@</span> &gt; /dev/null
+<span class="o">}</span>
+
+trace <span class="nv">$@</span> <span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span> <span class="c1"># move stderr to stdout</span>
+</pre></div>
+
+
+<p>它能够输出一个程序(包含它内部的多个线程)调用glibc中malloc/free的序列。你可以观察一下很多workload重的应用，它们是如何使用内存的。</p>
+<div class="fenced fenced-green">
+<h4 id="trace-mallocfree">Trace malloc/free够吗？</h4>
+<p>不止一个库函数可能会分配内存，例如<code>strdup</code>, <code>asprintf</code>...如何监控所有的内存分配？</p>
+</div>
+<p>在理解了workload以后，我们就可以针对性地设计算法了。</p>
+<h3 id="malloc">实际的malloc</h3>
+<p>从大的角度说，要实现malloc/free，注意：</p>
+<ul>
+<li>尽量让线程能互不影响地独立分配，否则分配频繁的程序会遇到瓶颈；因此需要把内存“分区”。</li>
+<li>大内存/小内存的分配频率通常是很不相同的，应当分开考虑。分配一段相对较大的内存，势必需要使用一段时间才能“回本”，不回本的情形时比较少的。这也注定了大内存的分配频率会远远小于小内存。因此可以为它们使用不同的算法，例如采用bitmap分配。</li>
+<li>根据具体情况具体分析——在C应用程序、内核、JVM三个典型的场景里，workloads又有细微的区别：C程序的分配不太规律，要避免内存的浪费和碎片；内核中固定大小内存的分配相对比较频繁；JVM有大量的内存分配，但绝大部分生存周期很短。</li>
+</ul>
+<p>一些介绍性质的文章(不必深究，想深究的同学多多少少还是要去读代码)：</p>
+<ul>
+<li>
+<p><a href="https://sourceware.org/glibc/wiki/MallocInternals">glibc的malloc实现</a>；</p>
+</li>
+<li>
+<p><a href="https://www.geeksforgeeks.org/operating-system-allocating-kernel-memory-buddy-system-slab-system/">Buddy和slab</a> ;</p>
+</li>
+<li><a href="https://www.oracle.com/webfolder/technetwork/tutorials/obe/java/G1GettingStarted/index.html">G1 Garbage Collector</a>。</li>
+</ul>
+    </div>
+  </div>
+</center>
+
+<div class="footer-bottom">
+  <center>
+    <div class="copyright"> © 2019 Yanyan Jiang, All rights reserved </div>
+  </center>
+</div>
+
+<script>
+  $("math").each(function() {
+    var tex = $(this).text();
+    var html = katex.renderToString(tex, {
+      throwOnError: false
+    });
+    $(this).replaceWith(html);
+  });
+</script>
+
+    <script>
+      $("math").each(function() {
+        var tex = $(this).text();
+        var html = katex.renderToString(tex, {
+          throwOnError: false
+        });
+        $(this).replaceWith(html);
+      });
+    </script>
+  
+</body></html>

@@ -1,0 +1,394 @@
+
+<!-- saved from url=(0050)http://114.212.87.156:5000/wiki/OS2019_Concurrency -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="stylesheet" href="./共享内存多线程_files/bootstrap.min.css">
+    <link rel="stylesheet" href="./共享内存多线程_files/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="./共享内存多线程_files/katex.min.css">
+    <link rel="stylesheet" href="./共享内存多线程_files/wiki.css">
+    <link rel="stylesheet" href="./共享内存多线程_files/codehilite.css">
+
+    <script src="./共享内存多线程_files/katex.min.js.下载"></script>
+    <script src="./共享内存多线程_files/jquery.min.js.下载"></script>
+    
+    
+    
+
+    <title>共享内存多线程</title>
+  <style type="text/css">
+:root .content > a > .topline
+{ display: none !important; }</style></head>
+  <body>
+   
+   
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-header">
+    <div class="navbar-brand">
+      <a href="http://114.212.87.156:5000/wiki">Yanyan's Wiki</a>
+    </div>
+  </div>
+  <div class="collapse navbar-collapse">
+    <ul class="nav navbar-nav navbar-left"> 
+      <li><a href="http://114.212.87.156:5000/wiki/OS2019"><img class="textimg" src="./共享内存多线程_files/logo-n.png"> 操作系统(2019)</a></li>
+      <li><a href="http://114.212.87.156:5000/wiki/ICS_NJU"><img class="textimg" height="18px" src="./共享内存多线程_files/ics.png"> 加入我们</a></li>
+    </ul>
+  </div>
+</div>
+
+<center>
+  <div class="article-container">
+    <div class="article">
+      <h1 id="_1">共享内存多线程</h1>
+<div class="fenced fenced-blue">
+<h4 id="_2">本讲阅读材料</h4>
+<p><a href="http://pages.cs.wisc.edu/~remzi/OSTEP/">教科书 (Operating Systems: Three Easy Pieces, OSTEP)</a>第25-27章。</p>
+</div>
+<p>关于并发多线程的概念性内容，在此不再赘述。</p>
+<h2 id="_3">多线程编程</h2>
+<h3 id="_4">迷你线程库</h3>
+<p>我们对POSIX线程做了一定的封装，这样可以更方便地写一些(单文件的)小程序，实际体验一下多线程编程。代码参考<a href="http://114.212.87.156:5000/static/wiki/os/2019/demos/threads.h"><code>threads.h</code></a>，其中定义了一个大小为128的线程池，和一个main返回后的回调函数(callback)：</p>
+<div class="codehilite"><pre><span></span><span class="n">pthread_t</span> <span class="o">*</span><span class="n">threads</span><span class="p">[</span><span class="mi">128</span><span class="p">];</span>
+<span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">cleanup_func</span><span class="p">)();</span>
+</pre></div>
+
+
+<p>线程创建非常简单，遍历<code>threads</code>找到一个空位，然后使用<code>pthread_create</code>创建一个线程(请RTFM)。</p>
+<div class="codehilite"><pre><span></span><span class="k">static</span> <span class="kt">void</span> <span class="nf">create</span><span class="p">(</span><span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">func</span><span class="p">)())</span> <span class="p">{</span>
+  <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">LENGTH</span><span class="p">(</span><span class="n">threads</span><span class="p">);</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">threads</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">)</span> <span class="p">{</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">i</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">atexit</span><span class="p">(</span><span class="n">join_all</span><span class="p">);</span>
+      <span class="p">}</span>
+      <span class="n">pthread_t</span> <span class="o">*</span><span class="n">t</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="n">pthread_t</span><span class="p">));</span>
+      <span class="n">threads</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">t</span><span class="p">;</span>
+      <span class="n">pthread_create</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span> <span class="n">entry_all</span><span class="p">,</span> <span class="n">func</span><span class="p">);</span>
+      <span class="k">break</span><span class="p">;</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>注意到<code>pthread_create</code>创建线程的参数是<code>void *func(void *arg)</code>，因此我们用<code>entry_all</code>包裹(wrap)：</p>
+<div class="codehilite"><pre><span></span><span class="k">static</span> <span class="kt">void</span> <span class="o">*</span><span class="nf">entry_all</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">f</span><span class="p">)</span> <span class="p">{</span>
+  <span class="p">((</span><span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="p">)())</span><span class="n">f</span><span class="p">)();</span>
+  <span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>以及，当第一次创建线程时，使用<code>atexit()</code>注册回调函数<code>join_all</code>，它编译线程池，并调用<code>pthread_join</code>等待所有线程结束后，调用注册的回调函数：</p>
+<div class="codehilite"><pre><span></span><span class="k">static</span> <span class="kt">void</span> <span class="nf">join_all</span><span class="p">()</span> <span class="p">{</span>
+  <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">LENGTH</span><span class="p">(</span><span class="n">threads</span><span class="p">);</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">pthread_t</span> <span class="o">*</span><span class="n">t</span> <span class="o">=</span> <span class="n">threads</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="p">{</span>
+      <span class="n">pthread_join</span><span class="p">(</span><span class="o">*</span><span class="n">t</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
+      <span class="n">free</span><span class="p">(</span><span class="n">t</span><span class="p">);</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">cleanup_func</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">cleanup_func</span><span class="p">();</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">static</span> <span class="kt">void</span> <span class="nf">join</span><span class="p">(</span><span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">func</span><span class="p">)())</span> <span class="p">{</span>
+  <span class="n">cleanup_func</span> <span class="o">=</span> <span class="n">func</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>迷你线程库封装了fork-join model的线程，就像“fork(叉子)”一样创建出多个执行路径，最后等待它们执行完毕。</p>
+<p></p><center><img alt="" src="./共享内存多线程_files/fork-join.png" width="300px"></center><p></p>
+<h3 id="_5">多线程编程</h3>
+<p>有了迷你线程库，我们很容易创建多个共享内存的线程(它们拥有独立的堆栈)。</p>
+<div class="codehilite"><pre><span></span><span class="cp">#include</span> <span class="cpf">&lt;threads.h&gt;</span><span class="cp"></span>
+
+<span class="kt">int</span> <span class="n">x</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+<span class="kt">void</span> <span class="nf">f</span><span class="p">()</span> <span class="p">{</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"Hello from thread #%c</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="s">"123456789X"</span><span class="p">[</span><span class="n">x</span><span class="o">++</span><span class="p">]);</span>
+  <span class="k">while</span> <span class="p">(</span><span class="mi">1</span><span class="p">);</span> <span class="c1">// to make sure we're not calling f() for ten times</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+  <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">create</span><span class="p">(</span><span class="n">f</span><span class="p">);</span>
+  <span class="p">}</span>
+  <span class="n">join</span><span class="p">(</span><span class="nb">NULL</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>上述程序帮助我们确认：</p>
+<ul>
+<li><code>x</code>的确是共享的，不同的线程打印出了不同的数字；</li>
+<li>线程的确是并发/并行的，否则按顺序调用<code>f()</code>将会进入死循环。</li>
+</ul>
+<p>其他例子包括并发调用C运行库(C运行库通常是线程安全的，请RTFM)。</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">a</span><span class="p">()</span> <span class="p">{</span> <span class="k">while</span> <span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span> <span class="n">printf</span><span class="p">(</span><span class="s">"a"</span><span class="p">);</span> <span class="p">}</span> <span class="p">}</span>
+<span class="kt">void</span> <span class="nf">b</span><span class="p">()</span> <span class="p">{</span> <span class="k">while</span> <span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span> <span class="n">printf</span><span class="p">(</span><span class="s">"b"</span><span class="p">);</span> <span class="p">}</span> <span class="p">}</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span> <span class="n">create</span><span class="p">(</span><span class="n">a</span><span class="p">);</span> <span class="n">create</span><span class="p">(</span><span class="n">b</span><span class="p">);</span> <span class="p">}</span>                              
+</pre></div>
+
+
+<h3 id="_6">共享内存的麻烦</h3>
+<p>多个线程共享内存，因此对共享变量的访问就会形成“竞争”(races)，例如以下这个例子是两个线程求<code>1 + 1 + 1 + … 1</code>：</p>
+<div class="codehilite"><pre><span></span><span class="kt">long</span> <span class="n">sum</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+<span class="kt">void</span> <span class="nf">do_sum</span><span class="p">()</span> <span class="p">{</span>
+  <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">100000000</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="n">sum</span><span class="o">++</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="kt">void</span> <span class="nf">print</span><span class="p">()</span> <span class="p">{</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"sum = %ld</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">sum</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+  <span class="n">create</span><span class="p">(</span><span class="n">do_sum</span><span class="p">);</span>
+  <span class="n">create</span><span class="p">(</span><span class="n">do_sum</span><span class="p">);</span>
+  <span class="n">join</span><span class="p">(</span><span class="n">print</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>执行结果：</p>
+<ul>
+<li><code>gcc -O0</code> (8.726s) sum = 1054212206</li>
+<li><code>gcc -O1</code> (0.388s) sum = 1000000000 </li>
+<li><code>gcc -O2</code> (0.002s) sum = 2000000000</li>
+</ul>
+<p><code>gcc -O0</code>告诉我们：看似<code>sum++</code>是一条语句，但实际执行的时候，它可能被打断，更像是：</p>
+<div class="codehilite"><pre><span></span><span class="n">tmp</span> <span class="o">=</span> <span class="n">sum</span><span class="p">;</span>
+<span class="n">tmp</span> <span class="o">+=</span> <span class="mi">1</span><span class="p">;</span>
+<span class="n">sum</span> <span class="o">=</span> <span class="n">tmp</span><span class="p">;</span>
+</pre></div>
+
+
+<p>这三条语句的执行。因此有可能出现：</p>
+<div class="codehilite"><pre><span></span><span class="c1">// sum = 10</span>
+<span class="p">(</span><span class="n">thread1</span><span class="p">)</span>    <span class="p">(</span><span class="n">thread2</span><span class="p">)</span>
+<span class="n">tmp</span> <span class="o">=</span> <span class="n">sum</span>  <span class="c1">// 10</span>
+             <span class="n">tmp</span> <span class="o">=</span> <span class="n">sum</span> <span class="c1">// 10</span>
+<span class="n">tmp</span> <span class="o">+=</span> <span class="mi">1</span>   <span class="c1">// 11</span>
+<span class="n">sum</span> <span class="o">=</span> <span class="n">tmp</span>  <span class="c1">// 11</span>
+<span class="n">tmp</span> <span class="o">=</span> <span class="n">sum</span>  <span class="c1">// 11</span>
+<span class="n">tmp</span> <span class="o">+=</span> <span class="mi">1</span>   <span class="c1">// 12</span>
+             <span class="n">tmp</span> <span class="o">+=</span> <span class="mi">1</span>  <span class="c1">// 11</span>
+<span class="n">sum</span> <span class="o">=</span> <span class="n">tmp</span>  <span class="c1">// 12</span>
+             <span class="n">sum</span> <span class="o">=</span> <span class="n">tmp</span> <span class="c1">// sum = 11</span>
+</pre></div>
+
+
+<p>也就是说，出现了程序“前进几步”，又被“后退”的情况：<strong>在共享内存中，语句的执行并不是原子(atomic)的</strong>。</p>
+<p>而<code>-O1</code>和<code>-O2</code>的情况又告诉我们：你也许并不知道编译器实际会把你的程序编译成什么。在<code>-O1</code>时，<code>gcc</code>用<code>rax</code>寄存器表示了<code>sum</code>并在循环结束后才一次性写入，因此最终写入了<code>N</code>；而<code>-O2</code>干脆把整个循环优化成了<code>sum += N</code>。</p>
+<p>当然一个更让人费解的例子是：</p>
+<div class="codehilite"><pre><span></span><span class="kt">int</span> <span class="k">volatile</span> <span class="n">x</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+<span class="kt">void</span> <span class="nf">thread1</span><span class="p">()</span> <span class="p">{</span>
+  <span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="n">x</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>   <span class="c1">// write(x)</span>
+  <span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="n">ty</span> <span class="o">=</span> <span class="n">y</span><span class="p">;</span>  <span class="c1">// read(y)</span>
+<span class="p">}</span>
+<span class="kt">void</span> <span class="nf">thread2</span><span class="p">()</span> <span class="p">{</span>
+  <span class="p">(</span><span class="mi">3</span><span class="p">)</span> <span class="n">y</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>   <span class="c1">// write(y)</span>
+  <span class="p">(</span><span class="mi">4</span><span class="p">)</span> <span class="n">tx</span> <span class="o">=</span> <span class="n">x</span><span class="p">;</span>  <span class="c1">// read(x)</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>这个程序太简单了，就是写一个变量，读另一个变量嘛(最后输出(tx, ty)的值)。把语句看作指令(实际上也正是如此编译成指令的)有以下执行顺序：</p>
+<ul>
+<li>(1) → (2) → (3) → (4), 最后将得到(0, 1)</li>
+<li>(3) → (4) → (1) → (2)，最后将得到(1, 0)</li>
+<li>(1) → (3) → (4) → (2)，最后将得到(1, 1)</li>
+<li>(1) → (3) → (2) → (4), 最后将得到(1, 1)</li>
+<li>...</li>
+</ul>
+<p>无论如何，第一个执行的指令总是<span class="katex"><span class="katex-mathml"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>(</mo><mn>1</mn><mo>)</mo><mo>(</mo><mn>1</mn><mo>)</mo></mrow><annotation encoding="application/x-tex">(1)(1)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="strut" style="height:0.75em;"></span><span class="strut bottom" style="height:1em;vertical-align:-0.25em;"></span><span class="base"><span class="mopen">(</span><span class="mord mathrm">1</span><span class="mclose">)</span><span class="mopen">(</span><span class="mord mathrm">1</span><span class="mclose">)</span></span></span></span></span><span class="katex-html" aria-hidden="true"><span class="strut" style="height:0.75em;"></span><span class="strut bottom" style="height:1em;vertical-align:-0.25em;"></span><span class="base"><span class="mopen">(</span><span class="mord mathrm">1</span><span class="mclose">)</span></span></span></span>或<span class="katex"><span class="katex-mathml"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>(</mo><mn>2</mn><mo>)</mo><mo>(</mo><mn>2</mn><mo>)</mo></mrow><annotation encoding="application/x-tex">(2)(2)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="strut" style="height:0.75em;"></span><span class="strut bottom" style="height:1em;vertical-align:-0.25em;"></span><span class="base"><span class="mopen">(</span><span class="mord mathrm">2</span><span class="mclose">)</span><span class="mopen">(</span><span class="mord mathrm">2</span><span class="mclose">)</span></span></span></span></span><span class="katex-html" aria-hidden="true"><span class="strut" style="height:0.75em;"></span><span class="strut bottom" style="height:1em;vertical-align:-0.25em;"></span><span class="base"><span class="mopen">(</span><span class="mord mathrm">2</span><span class="mclose">)</span></span></span></span>，因此……什么？在实际执行的时候，我压根就没看到过(1, 1)，但是却看到了(0, 0)？看不到(1, 1)还可以接受：这两条指令在0.000000001s就执行完了，没来得及切换，但看到(0, 0)似乎有些过分了？</p>
+<h2 id="_7">顺序、原子性、可见性的丧失</h2>
+<h3 id="_8">编译器：顺序的丧失</h3>
+<p>编译器只考虑程序在一个线程(处理器)上执行的<strong>顺序语义</strong>。因此，考虑一次执行中的读写序列：</p>
+<div class="codehilite"><pre><span></span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="n">R</span><span class="p">(</span><span class="n">x</span><span class="p">);</span> <span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="n">W</span><span class="p">(</span><span class="n">x</span><span class="p">);</span> <span class="p">(</span><span class="mi">3</span><span class="p">)</span> <span class="n">R</span><span class="p">(</span><span class="n">x</span><span class="p">);</span> <span class="p">(</span><span class="mi">4</span><span class="p">)</span> <span class="n">W</span><span class="p">(</span><span class="n">x</span><span class="p">);</span> <span class="p">(</span><span class="mi">5</span><span class="p">)</span> <span class="n">R</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+</pre></div>
+
+
+<p>考虑<code>(2) W(x); (3) R(x)</code>，因为只考虑程序顺序执行，因此(3)读到的值一定是(2)写入的，因此不必从内存中读取(分配寄存器即可)：</p>
+<div class="codehilite"><pre><span></span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="n">R</span><span class="p">(</span><span class="n">x</span><span class="p">);</span> <span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="n">W</span><span class="p">(</span><span class="n">x</span><span class="p">);</span> <span class="p">(</span><span class="mi">4</span><span class="p">)</span> <span class="n">W</span><span class="p">(</span><span class="n">x</span><span class="p">);</span> <span class="p">(</span><span class="mi">5</span><span class="p">)</span> <span class="n">R</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+</pre></div>
+
+
+<p>考虑<code>(2) W(x); (4) W(x)</code>，因为(4)覆盖了(2)，(2)也可以删除：</p>
+<div class="codehilite"><pre><span></span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="n">R</span><span class="p">(</span><span class="n">x</span><span class="p">);</span> <span class="p">(</span><span class="mi">4</span><span class="p">)</span> <span class="n">W</span><span class="p">(</span><span class="n">x</span><span class="p">);</span> <span class="p">(</span><span class="mi">5</span><span class="p">)</span> <span class="n">R</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+</pre></div>
+
+
+<p>考虑<code>(4) W(x); (5) R(y)</code>，从顺序执行的角度，只要编译器能证明x和y不是同一变量，就可以出于性能考虑任意调换顺序，最终得到序列：</p>
+<div class="codehilite"><pre><span></span><span class="n">R</span><span class="p">(</span><span class="n">x</span><span class="p">);</span> <span class="n">R</span><span class="p">(</span><span class="n">y</span><span class="p">);</span> <span class="n">W</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+</pre></div>
+
+
+<p>所以之前的求和函数不同优化的结果都是合理的：</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">f_O0</span><span class="p">()</span> <span class="p">{</span>
+  <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kt">int</span> <span class="n">t</span> <span class="o">=</span> <span class="n">R</span><span class="p">(</span><span class="n">sum</span><span class="p">);</span>
+    <span class="n">t</span><span class="o">++</span><span class="p">;</span>
+    <span class="n">W</span><span class="p">(</span><span class="n">sum</span><span class="p">,</span> <span class="n">t</span><span class="p">);</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>不优化的时候几乎是一个“忠于C代码”的直接翻译。</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">f_O1</span><span class="p">()</span> <span class="p">{</span>
+  <span class="kt">int</span> <span class="n">t</span> <span class="o">=</span> <span class="n">R</span><span class="p">(</span><span class="n">sum</span><span class="p">);</span>
+  <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">;</span>
+  <span class="n">t</span> <span class="o">+=</span> <span class="n">N</span><span class="p">;</span>
+  <span class="n">W</span><span class="p">(</span><span class="n">sum</span><span class="p">,</span> <span class="n">t</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>启动O1后，<code>sum</code>的求和被合并了，有趣的是循环变量<code>i</code>并没有被优化，-O1不会“删除”程序中的任何有一个变量，这样既得到优化的结果，又不至于使调试太困难。因为此时在<code>R(sum)</code>和<code>W(sum)</code>之间有了一个很长时间的空循环，所以在实际计算机上，代码执行的顺序几乎总是<code>R(sum) -&gt; R(sum) -&gt; W(sum) -&gt; W(sum)</code>，因此输出<code>N</code>。</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">f_O2</span><span class="p">()</span> <span class="p">{</span>
+  <span class="kt">int</span> <span class="n">t</span> <span class="o">=</span> <span class="n">R</span><span class="p">(</span><span class="n">sum</span><span class="p">);</span>
+  <span class="n">t</span> <span class="o">+=</span> <span class="n">N</span><span class="p">;</span>
+  <span class="n">W</span><span class="p">(</span><span class="n">sum</span><span class="p">,</span> <span class="n">t</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>在O2的情况下，即便这个程序存在和O1一样的问题，但因为求和的时间很短，不运行很多很多很多次是无法观察到问题的。</p>
+<div class="fenced fenced-green">
+<h4 id="_9">实现顺序控制</h4>
+<p>作为一个系统编程语言，C语言当然为我们提供了相应的设施。一方便可以用<a href="https://en.cppreference.com/w/c/language/volatile"><code>volatile</code>关键字</a>；你能区分以下定义的区别吗：</p>
+<div class="codehilite"><pre><span></span><span class="k">volatile</span> <span class="kt">char</span> <span class="o">*</span><span class="n">p</span><span class="p">;</span>
+<span class="kt">char</span> <span class="o">*</span> <span class="k">volatile</span> <span class="n">p</span><span class="p">;</span>
+<span class="k">volatile</span> <span class="kt">char</span> <span class="o">*</span> <span class="k">volatile</span> <span class="n">p</span><span class="p">;</span>
+</pre></div>
+
+
+<p>以及，更轻量级的memory barrier:</p>
+<div class="codehilite"><pre><span></span><span class="cp">#define barrier() asm volatile ("":::"memory")</span>
+</pre></div>
+
+
+<p>可以阻止优化跨越边界：</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">foo</span><span class="p">()</span> <span class="p">{</span>
+  <span class="n">x</span><span class="o">++</span><span class="p">;</span>
+  <span class="n">barrier</span><span class="p">();</span>
+  <span class="n">x</span><span class="o">++</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>会生成两条独立的<code>add</code>指令。</p>
+</div>
+<div class="fenced fenced-blue">
+<h4 id="bug">并发bug</h4>
+<p>由并发性引起的bug非常难触发，触发了也难复现(你就算测试几百万次，<code>f_O2</code>都总是返回正确的结果)。</p>
+</div>
+<h3 id="_10">操作系统：原子性的丧失</h3>
+<p>即便编译器生成了符合你预期的指令序列，操作系统也不能令你如愿。即便只有一个处理器，指令序列在执行时随时都可能发生硬件中断：</p>
+<div class="codehilite"><pre><span></span>===Thread 1===     ===Thread 2===
+movl (x), %eax           .
+addl $1, %eax            .
+      . // interrupt &amp; context switch
+      .            movl (x), %eax
+      .            addl $1, %eax
+      .            mov %eax, (x)
+      . // interrupt &amp; context switch
+mov %eax, (x)            .
+</pre></div>
+
+
+<p>因此你认为希望一起执行的<code>x++</code>，虽然是一条语句，但有可能在中途就被打断了。所以你希望能提供两个函数：</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">foo</span><span class="p">()</span> <span class="p">{</span>
+  <span class="n">stop_the_world</span><span class="p">();</span>
+  <span class="kt">int</span> <span class="n">tmp</span> <span class="o">=</span> <span class="n">sum</span><span class="p">;</span>
+  <span class="n">tmp</span><span class="o">++</span><span class="p">;</span>
+  <span class="n">sum</span> <span class="o">=</span> <span class="n">tmp</span><span class="p">;</span>
+  <span class="n">resume_the_world</span><span class="p">();</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>希望能实现其他处理器/线程的“时间停止”，不再执行任何指令。</p>
+<div class="fenced fenced-green">
+<h4 id="_11">实现原子性</h4>
+<p>计算机系统为我们提供了各种同步机制实现并发控制。最典型的就是互斥锁lock和unlock：</p>
+<div class="codehilite"><pre><span></span><span class="n">lock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk</span><span class="p">);</span>
+<span class="c1">// 临界区, critical section</span>
+<span class="n">unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk</span><span class="p">);</span>
+</pre></div>
+
+
+<p>能实现“临界区”的保护——lock(&amp;lk)一旦返回，其他任何线程都不能获得lk，直到执行unlock(&amp;lk)为止。同步是操作系统课程中的重要内容。</p>
+</div>
+<h3 id="_12">处理器：可见性的丧失</h3>
+<p>让我们回到之前最后一个例子，假设一个线程按如下顺序执行指令：</p>
+<div class="codehilite"><pre><span></span>movl $1, x(%rip)    // write(x)
+movl y(%rip), %eax  // read(x)
+</pre></div>
+
+
+<p>考虑到内存相对于处理器是非常慢的设备，为了加速内存的访问，现代计算机系统都利用了局部性，在处理器上增加了缓存。因为缓存的速度非常快，无法做到多处理器之间的共享，所以现代多处理器系统里，每个处理器都有自己的缓存(实际情况会更复杂一些，例如每个处理器有独立的L1 cache，处理器之间则共享L2和L3)：</p>
+<p></p><center><img alt="" src="./共享内存多线程_files/smp-with-cache.jpg" width="400px"></center><p></p>
+<p>而cache miss则是现代处理器性能损失的一大问题：</p>
+<div class="codehilite"><pre><span></span>movl $1, x(%rip)    // cache miss
+                    // 巨长无比的等待
+movl y(%rip), %eax  // read(x)
+</pre></div>
+
+
+<p>所以，现代处理器在cache miss的时候，不会坐以待毙(悄悄进入节能模式等待缓存数据)，而是立即转去执行下一条指令(不带停的，乱序执行)，甚至上述两条指令，可以在同一个时钟周期开始执行(多发射)！听起来酷毙了，只要指令之间没有数据依赖关系、分支预测准确，无论是否有cache miss，处理器都能保持不断开始执行新的指令，cache miss也不会降低处理器的吞吐量。这就是现代处理器单核心性能增长的终极来源——利用指令级的并行。</p>
+<p>但乱序执行带来的麻烦是，可能导致read/write的顺序发生变化。在刚才的例子里，因为write发生了cache miss，指令实际完成的顺序则是</p>
+<div class="codehilite"><pre><span></span>movl y(%rip), %eax
+movl $1, x(%rip)
+</pre></div>
+
+
+<p>只要x和y是不同的变量，从顺序程序的角度，这个顺序调换是没有任何问题的；但对于多处理器来说，就会导致之前那种“难以名状”的程序执行结果：</p>
+<div class="codehilite"><pre><span></span><span class="kt">int</span> <span class="k">volatile</span> <span class="n">x</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+<span class="kt">void</span> <span class="nf">thread1</span><span class="p">()</span> <span class="p">{</span>
+  <span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="n">x</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>   <span class="c1">// write(x)</span>
+  <span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="n">ty</span> <span class="o">=</span> <span class="n">y</span><span class="p">;</span>  <span class="c1">// read(y)</span>
+<span class="p">}</span>
+<span class="kt">void</span> <span class="nf">thread2</span><span class="p">()</span> <span class="p">{</span>
+  <span class="p">(</span><span class="mi">3</span><span class="p">)</span> <span class="n">y</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>   <span class="c1">// write(y)</span>
+  <span class="p">(</span><span class="mi">4</span><span class="p">)</span> <span class="n">tx</span> <span class="o">=</span> <span class="n">x</span><span class="p">;</span>  <span class="c1">// read(x)</span>
+<span class="p">}</span>
+<span class="c1">// 执行结果：tx = ty = 0</span>
+</pre></div>
+
+
+<p>程序的执行是“不可串行化”的——程序的并发执行结果不等于任何一个指令顺序执行的排序。并发程序执行的行为由<a href="https://en.wikipedia.org/wiki/Memory_model_(programming)">内存模型(memory model)</a>定义。这个问题的详细探讨(包括路障指令，例如x86的<code>SFENCE, LFENCE, MFENCE</code>)超出了本课程讨论的范围，我们只需知道这种现象存在即可：<strong>在多个线程共享内存时，并发程序行为的准确建模是十分困难的</strong>。</p>
+<div class="fenced fenced-blue">
+<h4 id="jb">顺序、原子性、可见性都丧失了，我们还编个JB？</h4>
+<p>这就是为什么<a href="https://www.usenix.org/events/osdi10/tech/full_papers/Xiong.pdf">Ad hoc synchronization considered harmful</a>。为了解决这个问题，计算机系统为我们提供了同时保证顺序、原子性、可见性的同步操作——互斥锁、条件变量、信号量、事务内存……帮助程序员写出正确性容易保证的代码、实现并发控制。</p>
+<p>我们将在之后详细介绍这些内容。</p>
+</div>
+    </div>
+  </div>
+</center>
+
+<div class="footer-bottom">
+  <center>
+    <div class="copyright"> © 2019 Yanyan Jiang, All rights reserved </div>
+  </center>
+</div>
+
+<script>
+  $("math").each(function() {
+    var tex = $(this).text();
+    var html = katex.renderToString(tex, {
+      throwOnError: false
+    });
+    $(this).replaceWith(html);
+  });
+</script>
+
+    <script>
+      $("math").each(function() {
+        var tex = $(this).text();
+        var html = katex.renderToString(tex, {
+          throwOnError: false
+        });
+        $(this).replaceWith(html);
+      });
+    </script>
+  
+</body></html>

@@ -1,0 +1,158 @@
+
+<!-- saved from url=(0044)http://114.212.87.156:5000/wiki/OS2019_CBugs -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="stylesheet" href="./并发bugs_files/bootstrap.min.css">
+    <link rel="stylesheet" href="./并发bugs_files/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="./并发bugs_files/katex.min.css">
+    <link rel="stylesheet" href="./并发bugs_files/wiki.css">
+    <link rel="stylesheet" href="./并发bugs_files/codehilite.css">
+
+    <script src="./并发bugs_files/katex.min.js.下载"></script>
+    <script src="./并发bugs_files/jquery.min.js.下载"></script>
+    
+    
+    
+
+    <title>并发bugs</title>
+  <style type="text/css">
+:root .content > a > .topline,
+:root .ch[onclick="ga(this,event)"]
+{ display: none !important; }</style></head>
+  <body>
+   
+   
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-header">
+    <div class="navbar-brand">
+      <a href="http://114.212.87.156:5000/wiki">Yanyan's Wiki</a>
+    </div>
+  </div>
+  <div class="collapse navbar-collapse">
+    <ul class="nav navbar-nav navbar-left"> 
+      <li><a href="http://114.212.87.156:5000/wiki/OS2019"><img class="textimg" src="./并发bugs_files/logo-n.png"> 操作系统(2019)</a></li>
+      <li><a href="http://114.212.87.156:5000/wiki/ICS_NJU"><img class="textimg" height="18px" src="./并发bugs_files/ics.png"> 加入我们</a></li>
+    </ul>
+  </div>
+</div>
+
+<center>
+  <div class="article-container">
+    <div class="article">
+      <h1 id="bugs">并发bugs</h1>
+<div class="fenced fenced-blue">
+<h4 id="_1">本讲阅读材料</h4>
+<p><a href="http://pages.cs.wisc.edu/~remzi/OSTEP/">教科书 (Operating Systems: Three Easy Pieces, OSTEP)</a>第32章。</p>
+</div>
+<p>并发程序就是很难写——也很容易出错。即便编程但人再小心，巨大的项目里埋下隐藏但并发bug都是非常正常的。对于这些项目但维护者来说，并不能像同学们在学校里那样——代码交给助教，哪怕不对就扣点分呗，而是必须竭尽所能把代码变得正确。当然，测试、调试这些大型并发程序都非常困难，因此也就有了很多并发bug检测和避免的工具。</p>
+<div class="fenced fenced-green">
+<h4 id="_2">我们已经用过很多这样的工具了！</h4>
+<p>大家也许没有意识到，我们但<code>-Wall -Werror</code>在无形之中已经很多次保护了你。大家多多少少都有这样的经历：当我们开始写一个函数的时候，当然记得应该用<code>return</code>为函数返回正确的值，但写着写着，这件事就被忘记了——偶尔竟然还能通过测试。静态代码检查工具通过扫描源代码来检测潜在的bug。</p>
+</div>
+<h2 id="_3">死锁</h2>
+<p>并发程序中谈论最多的bug之一就是死锁。</p>
+<blockquote>
+<p>In concurrent computing, a deadlock is a state in which each member of a group is waiting for some other member to take action, such as sending a message or more commonly releasing a lock.</p>
+</blockquote>
+<p>每一本操作系统教科书都会对死锁进行深入详细的讨论，包括我们的<a href="http://pages.cs.wisc.edu/~remzi/OSTEP/threads-bugs.pdf">参考书</a>。</p>
+<p>死锁最基本的形式：</p>
+<div class="codehilite"><pre><span></span><span class="n">thread1</span>      <span class="n">tread2</span>
+<span class="nf">lock</span><span class="p">(</span><span class="n">A</span><span class="p">);</span>
+             <span class="n">lock</span><span class="p">(</span><span class="n">B</span><span class="p">);</span>
+
+<span class="n">lock</span><span class="p">(</span><span class="n">B</span><span class="p">);</span> <span class="c1">// 阻塞</span>
+             <span class="n">lock</span><span class="p">(</span><span class="n">A</span><span class="p">);</span> <span class="c1">// 阻塞</span>
+<span class="c1">// 任何线程都不能进入临界区</span>
+</pre></div>
+
+
+<p>然而，在一个真实的项目(例如Linux Kernel)中，存在海量的lock/unlock的操作，即便大家再小心、在规定上锁的顺序，实际情况是在实现中依然很容易出现死锁。怎么办呢？</p>
+<p>注意到即便有上述死锁发生，它们发生的几率依然未必很大——必须在一个线程连续的两次lock之间发生另一个lock事件，死锁才会能触发。如果临界区和其他计算占了绝大部分的时间，即便死锁但风险存在，也未必会实际发生。但无论如何，只要我们同时看到了AB和BA，这就是非常危险的信号——值得我们报警。就好像<code>-Wall -Werror</code>里发出的警告一样。</p>
+<p>于是就有了一个很自然的想法，修改lock()的实现：</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">lock</span><span class="p">(</span><span class="n">lock_t</span> <span class="o">*</span><span class="n">lk</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"Thread %d tires to lock %lx</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">gettid</span><span class="p">(),</span> <span class="p">(</span><span class="kt">uintptr_t</span><span class="p">)</span><span class="n">lk</span><span class="p">);</span>
+  <span class="p">...</span> <span class="c1">// 实际的lock实现</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>然后根据打印的日志查看是否有循环依赖等待的可能性——这很适合作为问题求解的习题，问题求解中学习的算法在实际(即便是看似无关、写代码但计算机软件/系统领域)中都有很重要的价值。</p>
+<div class="fenced fenced-green">
+<h4 id="_4">思考题：死锁的检测</h4>
+<p>如果已知每个线程上锁的顺序，如何预测是否存在一种导致死锁的上锁顺序？你将会设计怎样的算法来解决它？</p>
+<p>更多更实际的问题(例如一些数据竞争检测问题、record &amp; replay问题等)已经被证明了NP-完全性。但因为这些问题的重要性，我们依然要设计有效的算法解决它们，这学期学习的知识就可以现学现用了。</p>
+</div>
+<p>接着你可以对照一下你的算法和Linux Kernel中已经实现的<a href="http://114.212.87.156:5000/wiki/OS_lockdep">lockdep</a>，参考一下它是如何在检测准确性、性能优化等指标之间作出的权衡。和<code>-Wall</code>、你手工写的assertions一样，这些软件工具(不过是一些项目里的C代码)能够帮助我们大幅提高软件的质量，消灭其中的bug。有了lock validator，检测和排查死锁的难度就极大地降低了。</p>
+<h2 id="_5">原子性/顺序违反</h2>
+<p>并发bug并不只局限于死锁。如果你在该使用锁保护临界区时没有正确的保护，这显然是个并发bug。并发的<code>sum++;</code>、<code>buf[pos++] = data;</code>处理不当都会导致bug，但显然它们都不是死锁。</p>
+<p>因此有研究者<a href="http://dl.acm.org/citation.cfm?id=1346323">调研了若干开源项目中已经被发现和修复的并发bug</a>。这些bug代表了实际中遇到、报告并修复的例子，其中有些很有趣的发现：</p>
+<blockquote>
+<ul>
+<li><em>Almost all</em> (97%) of the examined non-deadlock bugs belong to one of the two simple bug patterns: atomicity-violation or order-violation.</li>
+<li><em>Almost all</em> (96%) of the examined concurrency bugs are guaranteed to manifest if certain partial order between 2 threads is enforced.</li>
+<li><em>Many</em> (66%) of the examined non-deadlock concurrency bugs’ manifestation involves concurrent accesses to only one variable.</li>
+<li><em>Almost all</em> (97%) of the examined deadlock bugs involve two threads circularly waiting for at most two resources.</li>
+</ul>
+</blockquote>
+<p>除了死锁以外，最常见的就对应了<code>lock/unlock</code>和<code>wait/signal</code>使用错误。lock/unlock保护临界区的<strong>原子性</strong>，使用不当就导致原子性违反(atomicity violation, AV)；而wait/signal维护事件之间的顺序，使用不当就导致顺序违反(order violation, OV)。</p>
+<p>这些bug比死锁更tricky、也更难检测：因为“到底什么东西需要被原子执行”和“到底事件执行的正确顺序是什么”都存在于程序员的心中，而未必会体现在代码里。你在编写操作系统实验的时候，也会期望一段代码被原子执行——但你必须手动加上<code>lock</code>和<code>unlock</code>才能保证它们的原子性；如果你忘记上锁，现在的编译器是无法推断出你是希望一段代码是原子的。虽然目前有一些这类研究，但它们还未能到达“登上教科书”的程度。</p>
+<h2 id="_6">数据竞争</h2>
+<p>在并发bug中，有一类很重要的问题是数据竞争(data race)，数据竞争是两个共享内存访问，它们满足以下条件：</p>
+<ul>
+<li>访问同一个共享内存变量；</li>
+<li>发生在不同的线程；</li>
+<li>至少有一个是写。</li>
+</ul>
+<p>这个概念和数字逻辑电路中的数据竞争是十分类似的。数据竞争意味着存在<strong>线程间的数据流</strong>，并且这个数据流极有可能是程序员没有考虑到的，例如以下例子：</p>
+<div class="codehilite"><pre><span></span><span class="k">if</span> <span class="p">(</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">fd</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+                             <span class="n">node</span><span class="o">-&gt;</span><span class="n">fd</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span> <span class="c1">// 另一个线程</span>
+  <span class="n">write</span><span class="p">(</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">fd</span><span class="p">,</span> <span class="p">...);</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>通常，现实中的并发程序一般都要求消除所有的数据竞争(通过锁或同步操作)，来消除这类线程间的数据流：数据竞争很可能伴随着原子性违反、顺序违反这类的bug (可以参考之前的论文)。</p>
+<p>和死锁一样，数据竞争的定义很明确，因此可以自动检测，我们只需要在所有同步操作(lock/unlock, wait/signal)和内存访问的时候打印日志：</p>
+<div class="codehilite"><pre><span></span><span class="n">printf</span><span class="p">(</span><span class="s">"Thread %d (%s:%d) read(%lx)</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span>
+  <span class="n">gettid</span><span class="p">(),</span> <span class="n">__FILE__</span><span class="p">,</span> <span class="n">__LINE__</span><span class="p">,</span> <span class="kt">uintptr_t</span><span class="p">(</span><span class="n">addr</span><span class="p">));</span>
+</pre></div>
+
+
+<p>然后分析日志就能预测程序执行中的数据竞争了。显然，如果连续的两个read/write事件满足数据竞争的定义，我们就在执行中找到了数据竞争。此外，还能通过排列日志中事件的顺序“预测”是否会存在数据竞争。这是目前一个比较热门的研究领域，可以参考一篇最近的<a href="http://umathur3.web.engr.illinois.edu/papers/wcp-pldi2017.pdf">研究论文</a>。</p>
+<h2 id="_7">小结</h2>
+<p>bug有时候很难完全避免——而且在大型系统中，想要检查、避免这些bug，完全靠程序员自己的努力，有时候有些太困难了，尤其是并发性引起的bug，本身触发概率就很低，触发以后也很难重现，给测试、调试带来了很大的困难。当然，我们有编程语言作为武器，所以在已有的软件系统上增加了各种各样能够保证它们质量的功能。</p>
+<div class="fenced fenced-green">
+<h4 id="oslabs">工具和OSLabs</h4>
+<p>当你开始写操作系统内核时，数据竞争、原子性/顺序违反、死锁……这些问题就都可能碰到了。虽然你未必会在OSLab里实现像lockdep那样完备的工具，但借鉴其中的思想增加检查、assertions往往能事半功倍。这就是系统编程的乐趣——不仅是照着需求实现代码，而是真正自己去设计完整的“解决方案”。</p>
+<p>另外一个提示：print stack trace在调试操作系统中非常有用，所以编译的时候我们增加了<code>-fno-omit-frame-pointer</code>，在出现问题的时候打印调用栈，这能帮助你快速定位到问题。</p>
+</div>
+    </div>
+  </div>
+</center>
+
+<div class="footer-bottom">
+  <center>
+    <div class="copyright"> © 2019 Yanyan Jiang, All rights reserved </div>
+  </center>
+</div>
+
+<script>
+  $("math").each(function() {
+    var tex = $(this).text();
+    var html = katex.renderToString(tex, {
+      throwOnError: false
+    });
+    $(this).replaceWith(html);
+  });
+</script>
+
+    <script>
+      $("math").each(function() {
+        var tex = $(this).text();
+        var html = katex.renderToString(tex, {
+          throwOnError: false
+        });
+        $(this).replaceWith(html);
+      });
+    </script>
+  
+</body></html>

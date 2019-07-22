@@ -1,0 +1,203 @@
+
+<!-- saved from url=(0052)http://114.212.87.156:5000/wiki/OS2019_AccessControl -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="stylesheet" href="./多用户与访问控制_files/bootstrap.min.css">
+    <link rel="stylesheet" href="./多用户与访问控制_files/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="./多用户与访问控制_files/katex.min.css">
+    <link rel="stylesheet" href="./多用户与访问控制_files/wiki.css">
+    <link rel="stylesheet" href="./多用户与访问控制_files/codehilite.css">
+
+    <script src="./多用户与访问控制_files/katex.min.js.下载"></script>
+    <script src="./多用户与访问控制_files/jquery.min.js.下载"></script>
+    
+    
+    
+
+    <title>多用户与访问控制</title>
+  <style type="text/css">
+:root .content > a > .topline,
+:root .ch[onclick="ga(this,event)"]
+{ display: none !important; }</style></head>
+  <body>
+   
+   
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-header">
+    <div class="navbar-brand">
+      <a href="http://114.212.87.156:5000/wiki">Yanyan's Wiki</a>
+    </div>
+  </div>
+  <div class="collapse navbar-collapse">
+    <ul class="nav navbar-nav navbar-left"> 
+      <li><a href="http://114.212.87.156:5000/wiki/OS2019"><img class="textimg" src="./多用户与访问控制_files/logo-n.png"> 操作系统(2019)</a></li>
+      <li><a href="http://114.212.87.156:5000/wiki/ICS_NJU"><img class="textimg" height="18px" src="./多用户与访问控制_files/ics.png"> 加入我们</a></li>
+    </ul>
+  </div>
+</div>
+
+<center>
+  <div class="article-container">
+    <div class="article">
+      <h1 id="_1">多用户与访问控制</h1>
+<div class="fenced fenced-blue">
+<h4 id="_2">本讲阅读材料</h4>
+<ul>
+<li><a href="https://www.usenix.org/node/150845">setuid demystified</a> (USENIX Security'02)</li>
+<li><a href="http://www.sigops.org/s/conferences/sosp/2009/papers/porter-sosp09.pdf">Operating system transactions</a> (SOSP'09)</li>
+</ul>
+</div>
+<p>操作系统为应用程序提供访问操作系统对象的API。然而，并不是所有的操作系统对象的访问都应该被无条件接受——计算机可能是被多个用户共享的。我们很自然不希望非系统管理员的用户能够访问其他用户的隐私数据，或是系统设备。因此，UNIX操作系统为我们提供了用户和访问控制的机制；而操作系统中的用户可以为每个文件分别设置访问控制的策略。</p>
+<div class="fenced fenced-blue">
+<h4 id="_3">访问控制</h4>
+<p>简单来说，就是在操作系统API执行时，决定用户是否具有访问操作系统对象的权限的机制和策略。</p>
+</div>
+<p>考虑到“everything is a file”，目前我们简单期间先只考虑文件系统中对象的访问控制。因此，本质上操作系统需要维护一个矩阵形式的数据结构：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>File 1</th>
+<th>File 2</th>
+<th>File 3</th>
+<th>File 4</th>
+<th>File 5</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>User 1</td>
+<td>r</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>r</td>
+</tr>
+<tr>
+<td>User 2</td>
+<td>rw</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>r</td>
+</tr>
+<tr>
+<td>User 3</td>
+<td>-</td>
+<td>rw</td>
+<td>rw</td>
+<td>r</td>
+<td>r</td>
+</tr>
+<tr>
+<td>User 4</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>rw</td>
+</tr>
+</tbody>
+</table>
+<p>当然，在操作系统里全局存储这个数据结构不是个好主意——文件系统是不断变化的，甚至随时可能被mount到其他目录，或者存储文件的介质物理上断开了和计算机的连接。因此，把这些访问控制权限作为文件系统的一部分，同样是一个很自然的设计，这就得到了今天我们<code>ls -l</code>时非常熟悉的结果：</p>
+<div class="codehilite"><pre><span></span>$ ls -l
+-rw-rw-r-- <span class="m">1</span> jyy  jyy     <span class="m">6</span> May <span class="m">26</span> <span class="m">10</span>:44 a.txt
+^            ^    ^
+访问控制      owner user/group
+</pre></div>
+
+
+<h2 id="_4">操作系统中的用户</h2>
+<p>想得到操作系统中所有的用户？一条命令就可以了：</p>
+<div class="codehilite"><pre><span></span>$ awk -F : <span class="s1">'{ print $1 }'</span> /etc/passwd
+root
+daemon
+bin
+sys
+...
+</pre></div>
+
+
+<p>UNIX系统中的用户信息以文本的形式存储在<code>/etc/passwd</code>。实际上，我们真的可以通过修改<code>/etc/passwd</code><a href="http://114.212.87.156:5000/static/wiki/os/2019/[http://tldp.org/LDP/sag/html/adduser.html](http://tldp.org/LDP/sag/html/adduser.html)">手工创建用户</a>。在这个例子里，我们知道了文件其实就是数据库的前身。在现代DBMS (MySQL, SQLite等)出现之前，大家就是用普通的文件管理系统中的重要数据！</p>
+<div class="fenced fenced-green">
+<h4 id="_5">崩溃一致性</h4>
+<p>哇，这么重要的数据竟然只保存在一个普通的数据文件里！那当我们修改<code>/etc/passwd</code>时，如果系统发生了崩溃，或者两个管理员同时写入，我的电脑会不会就成砖了呢？</p>
+<p>没错，你需要非常小心地管理这些文件，小心到系统提供了vipw/vigr两个命令来管理它们。</p>
+</div>
+<p>简单地说，用户就是一个名字和id。为了方便地管理权限(相当于一次性为多个用户设置访问控制权限)，UNIX系统还引入了用户组(group)的概念，每个用户属于一个用户组。</p>
+<h2 id="_6">基于用户和组的访问控制</h2>
+<p>于是，我们不难为每个文件配置它对于所有用户的访问权限。当然了，对每个文件配置每个用户的访问控制权限，仍然是个非常笨拙的办法：我们的系统里可能有上百个用户。UNIX聪明地在文件中记下文件所有者的用户和组(uid, gid)，然后用一个9个bit的字符串(或3个八进制数)来表示文件的访问权限：</p>
+<p></p><center><img alt="" src="./多用户与访问控制_files/permissions.png" width="400px"></center><p></p>
+<p>r代表读、w代表写、x代表可执行，前3个bit表示同一个用户(user class)是否可以访问这个文件、中间3个bit表示文件对应的组(group class)是否可以访问这个文件、后三个bit表示所有其他人是否可以访问这个文件。如果设置成000 (或者甚至077)，那么自己也不能访问这个文件：</p>
+<div class="codehilite"><pre><span></span>$ chmod <span class="m">000</span> a.txt
+$ ls -l a.txt
+---------- <span class="m">1</span> jyy jyy <span class="m">6</span> May <span class="m">26</span> <span class="m">10</span>:44 a.txt
+$ cat a.txt
+cat: a.txt: Permission denied
+</pre></div>
+
+
+<p>如果我们<code>chmod</code> 444, 222, 111，分别会得到：</p>
+<div class="codehilite"><pre><span></span>r--r--r-- # 444
+-w--w--w- # 222
+--x--x--x # 111
+</pre></div>
+
+
+<p>于是大家就不难理解网上教程中的各种chmod的含义：</p>
+<ul>
+<li><code>chmod 600: rw-------</code> 普通文件，仅owner user可以访问；</li>
+<li><code>chmod 666: rw-rw-rw-</code> 普通文件，但所有人都可以访问；</li>
+<li><code>chmod 777: rwxrwxrwx</code> 可执行文件，并且所有人都可以任意访问。</li>
+</ul>
+<p>在网上搜索教程时，很容易找到让你“<code>chmod 666</code>”甚至“<code>chmod 777</code>”用于解决问题——没错，这的确能解决相当一部分权限问题，但同时也极有可能让你的关键数据暴露在危险中。</p>
+<div class="fenced fenced-red">
+<h4 id="_7">小心管理你的系统权限</h4>
+<p>一篇<a href="https://dl.acm.org/citation.cfm?id=3025999">论文</a>指出，access deny是系统管理员经常遇到的问题。然而，系统管理员经常性地“grant too much access (known as security misconfigurations)”，很多时候就是为了图个方便，<code>chmod 777</code>，打开自家的大门，让小偷愉快地光顾。大家快去看看自己有没有中枪。</p>
+</div>
+<p>就这样，UNIX文件系统就巧妙地避免了存储整个访问控制矩阵，而是在每个文件里用一个若干位二进制数和uid, gid来存储访问控制策略。</p>
+<p>当然，UNIX还给我们留了很多遗产，例如setuid bit——它允许一个文件在运行时，获得它的uid所对应的权限：</p>
+<div class="codehilite"><pre><span></span>$ ls -l <span class="k">$(</span>which passwd<span class="k">)</span>
+-rwsr-xr-x <span class="m">1</span> root root <span class="m">59640</span> Jan <span class="m">25</span>  <span class="m">2018</span> /usr/bin/passwd*
+</pre></div>
+
+
+<p>于是passwd在运行时就能获得root权限，从而修改存储在文件系统数据库中的密码。但这听起来就很不安全：</p>
+<blockquote>
+<p>Due to the increased likelihood of security flaws, many operating systems ignore the setuid attribute when applied to executable shell scripts.</p>
+</blockquote>
+<div class="fenced fenced-green">
+<h4 id="root">获得root权限</h4>
+<p>你只需要制作一个USB盘(例如，ext4)，然后在里面存储一个setuid bit为root的文件(在操作系统课上，你已经学会了如何hack文件系统的镜像)，然后插入到自动挂载的电脑上……于是你就有了root权限……吗？</p>
+<p>这就是为什么mount命令需要root权限。等等！我的优盘插入到计算机的时候，不是自动挂载的么？那我随便弄个优盘，就得到root权限了？当然不是这样。有兴趣的同学可以自己做一下实验——坏事当然不会发生。这才是系统设计真正复杂之处：当需求反复叠加的时候，系统的行为就变得复杂。</p>
+</div>
+    </div>
+  </div>
+</center>
+
+<div class="footer-bottom">
+  <center>
+    <div class="copyright"> © 2019 Yanyan Jiang, All rights reserved </div>
+  </center>
+</div>
+
+<script>
+  $("math").each(function() {
+    var tex = $(this).text();
+    var html = katex.renderToString(tex, {
+      throwOnError: false
+    });
+    $(this).replaceWith(html);
+  });
+</script>
+
+    <script>
+      $("math").each(function() {
+        var tex = $(this).text();
+        var html = katex.renderToString(tex, {
+          throwOnError: false
+        });
+        $(this).replaceWith(html);
+      });
+    </script>
+  
+</body></html>

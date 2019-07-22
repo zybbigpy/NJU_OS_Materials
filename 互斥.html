@@ -1,0 +1,265 @@
+
+<!-- saved from url=(0044)http://114.212.87.156:5000/wiki/OS2019_Mutex -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="stylesheet" href="./互斥_files/bootstrap.min.css">
+    <link rel="stylesheet" href="./互斥_files/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="./互斥_files/katex.min.css">
+    <link rel="stylesheet" href="./互斥_files/wiki.css">
+    <link rel="stylesheet" href="./互斥_files/codehilite.css">
+
+    <script src="./互斥_files/katex.min.js.下载"></script>
+    <script src="./互斥_files/jquery.min.js.下载"></script>
+    
+    
+    
+
+    <title>互斥</title>
+  <style type="text/css">
+:root .content > a > .topline
+{ display: none !important; }</style></head>
+  <body>
+   
+   
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-header">
+    <div class="navbar-brand">
+      <a href="http://114.212.87.156:5000/wiki">Yanyan's Wiki</a>
+    </div>
+  </div>
+  <div class="collapse navbar-collapse">
+    <ul class="nav navbar-nav navbar-left"> 
+      <li><a href="http://114.212.87.156:5000/wiki/OS2019"><img class="textimg" src="./互斥_files/logo-n.png"> 操作系统(2019)</a></li>
+      <li><a href="http://114.212.87.156:5000/wiki/ICS_NJU"><img class="textimg" height="18px" src="./互斥_files/ics.png"> 加入我们</a></li>
+    </ul>
+  </div>
+</div>
+
+<center>
+  <div class="article-container">
+    <div class="article">
+      <h1 id="_1">互斥</h1>
+<div class="fenced fenced-blue">
+<h4 id="_2">本讲阅读材料</h4>
+<p><a href="http://pages.cs.wisc.edu/~remzi/OSTEP/">教科书 (Operating Systems: Three Easy Pieces, OSTEP)</a>第28章。</p>
+</div>
+<h2 id="_3">硬件层的互斥</h2>
+<h3 id="lock">LOCK指令</h3>
+<p>为了应对”顺序、原子性、可见性的丧失“，计算机硬件提供了能保证这三点的原子指令。在上一讲中我们已经介绍了x86处理器的LOCK prefix指令：</p>
+<div class="codehilite"><pre><span></span>lock addl $1, (sum)
+</pre></div>
+
+
+<p>就能实现多处理器之间的原子操作；</p>
+<div class="codehilite"><pre><span></span>lock xchg %rax,(x)
+</pre></div>
+
+
+<p>就可以把RAX寄存器的值和x的值原子地交换。LOCK指令同时满足了顺序、原子性、可见性：LOCK保护的指令保证原子执行，即所有带LOCK的指令都能排出一个顺序，使得在一个LOCK指令之前所有指令的写值，在LOCK指令之后都可见。</p>
+<p>如此一来，硬件就至少给我们提供了一个机制，帮助我们实现更大范围的互斥。</p>
+<h3 id="llsc">LL/SC</h3>
+<p>另一种硬件机制(也许更popular，在ARM, RISC-V, MIPS处理器中使用)是观察到：</p>
+<ul>
+<li>读是没有副作用的，即读不会对处理器状态造成污染；</li>
+<li>在硬件层互斥比较重要的是实现一次读和一次写的原子性：计数器加一、交换、<a href="https://en.wikipedia.org/wiki/Compare-and-swap">compare-and-swap/CAS</a>，等都可以看成是先读；做一些本地计算；再写的过程；</li>
+<li>如果对同一个变量的一对读-写之间没有其他对这个变量的写操作，这一对读-写就可以看成是原子的。</li>
+</ul>
+<p>因此，我们不妨就把这一对读-写实现成一对“可能失败”的操作——</p>
+<ul>
+<li>Load Linked (LL)：先执行一次读操作，并且在地址上做一个“标记”</li>
+<li>Store Conditional (SC)：试探性地写入LL相同的地址(通过对内存地址获得独占访问)。如果LL-SC之间没有其他到该地址的写操作，则写入内存，返回SUCC；否则不执行写入(进而不会污染任何内存)，并返回FAIL。</li>
+</ul>
+<p></p><center><img alt="" src="./互斥_files/ll-sc.png" width="500px"></center><p></p>
+<p>我们很容易可以用LL/SC实现xchg/add/compare-and-swap:</p>
+<div class="codehilite"><pre><span></span><span class="kt">int</span> <span class="nf">xchg</span><span class="p">(</span><span class="kt">int</span> <span class="o">*</span><span class="n">ptr</span><span class="p">,</span> <span class="kt">int</span> <span class="n">newval</span><span class="p">)</span> <span class="p">{</span>
+  <span class="kt">int</span> <span class="n">oldval</span><span class="p">;</span>
+  <span class="k">while</span> <span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">oldval</span> <span class="o">=</span> <span class="n">LL</span><span class="p">(</span><span class="n">ptr</span><span class="p">);</span>
+    <span class="c1">// 任何处理器本地计算，例如newval = oldval +1等</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">SC</span><span class="p">(</span><span class="n">ptr</span><span class="p">,</span> <span class="n">newval</span><span class="p">)</span> <span class="o">==</span> <span class="n">SUCC</span><span class="p">)</span> <span class="k">break</span><span class="p">;</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<div class="fenced fenced-green">
+<h4 id="ll-sc">LL &amp; SC</h4>
+<p>LL/SC是一个非常优雅的机制——它没有破坏RISC指令集“每条指令至多访问一次内存”的设计，而且如果有多个处理器同时执行对同一地址的LL/SC，总是有一个处理器能成功——其他处理器则会失败重试。它也很容易在cache coherence协议上实现。大家可以在Wikipedia<a href="https://en.wikipedia.org/wiki/Load-link/store-conditional">词条</a>上找到更多的引用。</p>
+</div>
+<h2 id="_4">实现自旋锁</h2>
+<div class="fenced fenced-blue">
+<h4 id="_5">自旋锁：扩展的原子指令</h4>
+<p>原子指令和LL/SC实际上只提供了非常有限的并发控制——它们只能实现<strong>一个load和一个store</strong>的顺序、原子性和可见性。当我们希望实现更复杂的并发对象(例如并发的链表、散列表等)时，使用原子指令就非常复杂了。因此，我们希望能把原子指令扩展到任意长的代码。</p>
+</div>
+<p>借助硬件提供的机制，我们可以<strong>延长</strong>原子指令(或LL/SC)提供非常有限的临界区。我们实现能满足互斥的锁:</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">lock</span><span class="p">(</span><span class="n">lock_t</span> <span class="o">*</span><span class="n">lk</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">unlock</span><span class="p">(</span><span class="n">lock_t</span> <span class="o">*</span><span class="n">lk</span><span class="p">);</span>
+</pre></div>
+
+
+<p>其中任何一段代码，只要被同一个锁<code>lk</code>保护，就能获得顺序、原子性、可见性。</p>
+<p></p><center><img alt="" src="./互斥_files/mutex-lock.png" width="500px"></center><p></p>
+<p>用上一次课我们末尾时实现的“自旋”方式，就能实现互斥：</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">lock</span><span class="p">(</span><span class="n">lock_t</span> <span class="o">*</span><span class="n">lk</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">while</span> <span class="p">(</span><span class="n">atomic_xchg</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk</span><span class="o">-&gt;</span><span class="n">locked</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span> <span class="p">;</span>
+<span class="p">}</span>
+<span class="kt">void</span> <span class="nf">unlock</span><span class="p">(</span><span class="n">lock_t</span> <span class="o">*</span><span class="n">lk</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">atomic_xchg</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk</span><span class="o">-&gt;</span><span class="n">locked</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>但这个实现有个非常明显的问题：</p>
+<p></p><center><img alt="" src="./互斥_files/spinning.png" width="500px"></center><p></p>
+<p>在实际系统中，线程的数量是远远大于处理器的数量的。因此，多个线程必须共享处理器——这是由中断驱动的上下文切换实现的(请大家复习计算机系统基础课的PA)。因此，如果T1获得锁，但被切换到其他线程时，可能出现如上图所示的，所有处理器都在等待一个睡眠线程的情况。更严重地，还可能导致系统中的优先级反转。</p>
+<h3 id="stop-the-world">单处理器：Stop the World</h3>
+<p>为了实现互斥，我们不妨考虑简单一点的情况——我们只有一个处理器。既然罪魁祸首是中断驱动的上下文切换，不如我们直接关中断了事：</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">lock</span><span class="p">(</span><span class="n">lock_t</span> <span class="o">*</span><span class="n">lk</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">cli</span><span class="p">();</span>
+<span class="p">}</span>
+<span class="kt">void</span> <span class="nf">unlock</span><span class="p">(</span><span class="n">lock_t</span> <span class="o">*</span><span class="n">lk</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">sti</span><span class="p">();</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>没错，关闭中断就相当于单处理器上的stop the world，实际上，在老旧的操作系统书上，关中断就是实现互斥的基本方法(而不是原子指令)。</p>
+<div class="fenced fenced-green">
+<h4 id="_6">何时开中断？</h4>
+<div class="codehilite"><pre><span></span><span class="n">lock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk1</span><span class="p">);</span>
+<span class="n">lock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk2</span><span class="p">);</span>
+<span class="n">unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk2</span><span class="p">);</span> <span class="c1">// 1</span>
+<span class="n">unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk1</span><span class="p">);</span> <span class="c1">// 2</span>
+</pre></div>
+
+
+<p>在什么时候开中断？答案稍后揭晓。</p>
+</div>
+<h3 id="stop-the-world_1">多处理器：Stop the World + 自旋</h3>
+<p>我们把关中断和自旋结合起来，就能得到多处理器系统适用的方案了：</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">lock</span><span class="p">(</span><span class="n">lock_t</span> <span class="o">*</span><span class="n">lk</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">cli</span><span class="p">();</span>
+  <span class="k">while</span> <span class="p">(</span><span class="n">atomic_xchg</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk</span><span class="o">-&gt;</span><span class="n">locked</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span> <span class="p">;</span>
+<span class="p">}</span>
+<span class="kt">void</span> <span class="nf">unlock</span><span class="p">(</span><span class="n">lock_t</span> <span class="o">*</span><span class="n">lk</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">atomic_xchg</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk</span><span class="o">-&gt;</span><span class="n">locked</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+  <span class="n">sti</span><span class="p">();</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<div class="fenced fenced-green">
+<h4 id="_7">操作顺序</h4>
+<p>先<code>cli</code>还是先自旋？先释放锁还是先<code>sti</code>？注意我们必须保证在获得锁期间处理器不会被中断。在<code>cli()</code>返回前的任意时刻，处理器都会被中断；在<code>sti()</code>后的一瞬间，处理器也可能被中断。</p>
+</div>
+<p>大家不妨考虑一下这个算法的正确性。在世界上只有一把锁的情况下，算法是没问题的。不过现实世界对锁的使用，要稍微考虑复杂一些的情形：</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">case1</span><span class="p">()</span> <span class="p">{</span>
+  <span class="n">assert</span><span class="p">((</span><span class="n">read_eflags</span><span class="p">()</span> <span class="o">&amp;</span> <span class="n">FL_IF</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">);</span>
+  <span class="n">lock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk</span><span class="p">)</span><span class="o">:</span>
+  <span class="n">unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk</span><span class="p">);</span>
+  <span class="n">assert</span><span class="p">((</span><span class="n">read_eflags</span><span class="p">()</span> <span class="o">&amp;</span> <span class="n">FL_IF</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">);</span>
+  <span class="c1">// 上锁/解锁前后IF标志位不变，不得随意打开中断</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">case2</span><span class="p">()</span> <span class="p">{</span>
+  <span class="n">assert</span><span class="p">((</span><span class="n">read_eflags</span><span class="p">()</span> <span class="o">&amp;</span> <span class="n">FL_IF</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">);</span> <span class="c1">// 初始时中断打开</span>
+  <span class="n">lock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk1</span><span class="p">);</span>
+  <span class="n">lock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk2</span><span class="p">);</span>
+  <span class="n">unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk2</span><span class="p">);</span>
+  <span class="n">assert</span><span class="p">((</span><span class="n">read_eflags</span><span class="p">()</span> <span class="o">&amp;</span> <span class="n">FL_IF</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">);</span> <span class="c1">// 持有锁时不得开中断</span>
+  <span class="n">unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk1</span><span class="p">);</span>
+  <span class="n">assert</span><span class="p">((</span><span class="n">read_eflags</span><span class="p">()</span> <span class="o">&amp;</span> <span class="n">FL_IF</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">);</span> <span class="c1">// 在释放所有锁后开中断</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<div class="fenced fenced-green">
+<h4 id="assertions">善用断言(assertions)</h4>
+<p>断言描述了<strong>你预期必定会发生的事</strong>。没错，断言就是一句“废话”。那废话有什么用呢？当然有用了！因为你的代码会有bug。断言成立的前提是程序符合规约，但通常大家的程序是不可能轻易符合规约的(笑，因此这些看起来没用的断言，能帮助大家迅速定位到问题所在。</p>
+<p>在并发编程中，这些断言更显得可贵——例如在某个例子里，你只在几条指令的执行过程中错误地(case 2)打开了中断。因此，想要暴露这个问题的可能性是微乎其微的，但断言却能帮助你以100%的概率捕获这个问题。</p>
+</div>
+<p>为了修复上述两个case，我们可以把lock和unlock想象成是入栈和出栈的过程——lock时，把eflags压入堆栈中，然后关闭中断；unlock时，从栈中恢复出eflags的数值。不过这里仍然有一个问题：</p>
+<div class="fenced fenced-green">
+<h4 id="_8">谁维护这个堆栈？</h4>
+<p>线程 or 锁 or 处理器？分别考虑这三种情况。以及，我们并不需要真正维护一个堆栈——因为第一次lock之后，到与之配对的unlock之前，中断始终处于关闭状态。</p>
+</div>
+<p>在你把这一切都想清楚以后，欣赏一下xv6的<a href="http://114.212.87.156:5000/static/wiki/os/2019/demos/spinlock.c">spinlock.c</a>吧！</p>
+<div class="fenced fenced-blue">
+<h4 id="xv6">xv6的自旋锁</h4>
+<p>这是一段写得非常棒的代码，很多细节都值得仔细体会：</p>
+<ul>
+<li>插入的assertions</li>
+<li>在上锁时保存的额外调试信息</li>
+<li>对内存的控制</li>
+</ul>
+<p>你可能不能100%理解其中的深意。做完OSLabs后你一定会有更好的体会。</p>
+</div>
+<h2 id="_9">实现能睡眠的互斥锁</h2>
+<div class="fenced fenced-blue">
+<h4 id="_10">自旋的缺陷</h4>
+<p>自旋锁虽然保证了多处理器资源不会被完全浪费(在没有死锁的前提下，至少有一个处理器能一直执行)，但关中断对于长临界区来说是非常糟糕的一件事——一方面，中断丢失可能严重损害I/O性能，另一方面，一段互斥的代码本身就需要等待中断。</p>
+</div>
+<p>因此，我们希望在进入临界区后允许中断和线程切换，但同时不希望处理器在任何时候“空转”，即消除自旋。进一步想，假如某个线程执行<code>lock(&amp;lk)</code>已经获得了锁正在执行，此时另一个线程执行了<code>lock(&amp;lk)</code>但需要等待——这个等待预期的时间会比较长，因此与其不停地自旋，我们不如在自旋失败的时候，主动切换到其他线程执行：</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">lock</span><span class="p">(</span><span class="n">lock_t</span> <span class="o">*</span><span class="n">lk</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">while</span> <span class="p">(</span><span class="n">atomic_xchg</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk</span><span class="o">-&gt;</span><span class="n">locked</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span> <span class="p">{</span>
+    <span class="n">give_up_time_slice_and_yield</span><span class="p">();</span> <span class="c1">// 切换    </span>
+  <span class="p">}</span>
+<span class="p">}</span>
+<span class="kt">void</span> <span class="nf">unlock</span><span class="p">(</span><span class="n">lock_t</span> <span class="o">*</span><span class="n">lk</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">atomic_xchg</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk</span><span class="o">-&gt;</span><span class="n">locked</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>但这还是不够好——如果等待锁的线程很多，轮着调度一遍也要花费很多的开销，我们不如做得彻底一点：</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">lock</span><span class="p">(</span><span class="n">lock_t</span> <span class="o">*</span><span class="n">lk</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">while</span> <span class="p">(</span><span class="n">atomic_xchg</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk</span><span class="o">-&gt;</span><span class="n">locked</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span> <span class="p">{</span>
+    <span class="n">list_add</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk</span><span class="o">-&gt;</span><span class="n">list</span><span class="p">,</span> <span class="n">myself</span><span class="p">);</span>
+    <span class="n">give_up_processor</span><span class="p">();</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">unlock</span><span class="p">(</span><span class="n">lock_t</span> <span class="o">*</span><span class="n">lk</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">atomic_xchg</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk</span><span class="o">-&gt;</span><span class="n">locked</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+  <span class="n">wake_up</span><span class="p">(</span><span class="n">list_remove</span><span class="p">(</span><span class="o">&amp;</span><span class="n">lk</span><span class="o">-&gt;</span><span class="n">list</span><span class="p">));</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>如果lock调用失败，我们干脆不要自旋了，而是把自己加到一个等待的队列里，等到有人释放锁的时候再唤醒，这就好像是我们的lock/unlock不再直接粗暴地去抢这把锁的使用权，而是类似于游泳馆那样的管理方法，现在先假设游泳池同一时间只能容纳一个人：</p>
+<p></p><center><img alt="" src="./互斥_files/swim-pool.png" width="500px"></center><p></p>
+<p>每当线程试图获得锁时，都问管理员要手环。如果管理员此时有一个手环，就直接把手环给线程，并且允许他进入 游泳池。否则，线程就需要在管理员处排队(然后线程睡眠，你可以理解成在队伍里专心致志地玩手机)，直到上一个线程把手环交换给管理员，戳一戳在队首的线程(唤醒它)，队首的线程获得锁，就可以了。</p>
+<div class="fenced fenced-green">
+<h4 id="_11">实现互斥锁</h4>
+<p>沿着这个思路，你不难写出允许中断的互斥锁了。但你仍然需要注意的是，刚才的代码一来不完整，二来可能存在一些并发的问题。你需要用之前实现的自旋锁保证其中的原子性，大家会在操作系统实验中再次面对这个问题，因此我们也不解释得更详细了。</p>
+</div>
+    </div>
+  </div>
+</center>
+
+<div class="footer-bottom">
+  <center>
+    <div class="copyright"> © 2019 Yanyan Jiang, All rights reserved </div>
+  </center>
+</div>
+
+<script>
+  $("math").each(function() {
+    var tex = $(this).text();
+    var html = katex.renderToString(tex, {
+      throwOnError: false
+    });
+    $(this).replaceWith(html);
+  });
+</script>
+
+    <script>
+      $("math").each(function() {
+        var tex = $(this).text();
+        var html = katex.renderToString(tex, {
+          throwOnError: false
+        });
+        $(this).replaceWith(html);
+      });
+    </script>
+  
+</body></html>

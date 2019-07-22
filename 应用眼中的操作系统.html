@@ -1,0 +1,186 @@
+
+<!-- saved from url=(0044)http://114.212.87.156:5000/wiki/OS2019_OSAPP -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="stylesheet" href="./应用眼中的操作系统_files/bootstrap.min.css">
+    <link rel="stylesheet" href="./应用眼中的操作系统_files/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="./应用眼中的操作系统_files/katex.min.css">
+    <link rel="stylesheet" href="./应用眼中的操作系统_files/wiki.css">
+    <link rel="stylesheet" href="./应用眼中的操作系统_files/codehilite.css">
+
+    <script src="./应用眼中的操作系统_files/katex.min.js.下载"></script>
+    <script src="./应用眼中的操作系统_files/jquery.min.js.下载"></script>
+    
+    
+    
+
+    <title>应用眼中的操作系统</title>
+  <style type="text/css">
+:root .content > a > .topline
+{ display: none !important; }</style></head>
+  <body>
+   
+   
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-header">
+    <div class="navbar-brand">
+      <a href="http://114.212.87.156:5000/wiki">Yanyan's Wiki</a>
+    </div>
+  </div>
+  <div class="collapse navbar-collapse">
+    <ul class="nav navbar-nav navbar-left"> 
+      <li><a href="http://114.212.87.156:5000/wiki/OS2019"><img class="textimg" src="./应用眼中的操作系统_files/logo-n.png"> 操作系统(2019)</a></li>
+      <li><a href="http://114.212.87.156:5000/wiki/ICS_NJU"><img class="textimg" height="18px" src="./应用眼中的操作系统_files/ics.png"> 加入我们</a></li>
+    </ul>
+  </div>
+</div>
+
+<center>
+  <div class="article-container">
+    <div class="article">
+      <h1 id="_1">应用眼中的操作系统</h1>
+<h2 id="_2">应用程序眼中的操作系统</h2>
+<p>应用程序是多种多样的：Hello World、算法题解、ICS上实现的x86模拟器、Shell、编译器、IDE……这些都是操作系统上运行的应用程序。不仅如此，操作系统还要支持各类不那么显然的应用程序的运行：</p>
+<ul>
+<li>任务管理器：监控系统运行的状态、运行的程序，并能对程序执行诸如杀死一类的操作。</li>
+<li>杀毒软件、调试器、游戏修改器/外挂：它们拦截、监控系统中运行的程序，并有时对程序行为作出干预。</li>
+</ul>
+<p>因此，操作系统一方面需要提供程序的<strong>执行的环境和相应的资源</strong>(每个程序都需要拥有自己的代码、数据、堆栈，并且在CPU上实际运行这些指令)，还要提供<strong>和操作系统世界中其他对象交互的方法和约定</strong>。让每个程序都直接访问硬件无疑会让整个系统非常难以管理，所以为了让大家都能有序地访问系统里的资源，从最早的操作系统开始(操作系统相当于一系列的库函数，调用库函数的程序能够相互协作)，这样的秩序就已经建立。</p>
+<p>不同的操作系统完全可以有不同的方法和约定。首先要规定的是操作系统里有什么对象(东西)、它们可以用来干什么。比如文件可以看成是一个字符数组，可以从中读出一部分，或者向其中写入一部分。每个文件有它的名字、被组织成目录树的结构，等等。Windows的文件系统就和UNIX/Linux设计有所差别。</p>
+<p>然后还要规定对象怎么访问。在C++里，我们直接调用对象的成员函数，比如<code>car.go()</code>，被翻译成函数调用指令直接在处理器上执行，对象用地址表示。操作系统里的对象同样需要一种表示方法。Windows很自然地使用句柄(Handle)引用操作系统中的各种对象(你可以在任务管理器里看到每个进程拥有的句柄数)，一个句柄就好像一个“指向操作系统内部”的指针，例如代表了“某个文件”、“某个设备”。在Google的Fuchsia OS内核<a href="https://fuchsia.googlesource.com/zircon/">Zircon微内核</a>里也使用句柄引用其中的对象。Linux/UNIX没有使用这个思路，而是“一切皆文件(everything is a file)”，通过文件描述符来访问系统中的各种对象。</p>
+<p>总的来说，<strong>每个设计都有它的取舍</strong>，目的都是<strong>更好地服务应用程序实现各类功能</strong>。例如，Windows应用程序使用<a href="https://msdn.microsoft.com/en-us/library/windows/desktop/ms682629">EnumProcesses</a> API获取进程列表，而Linux应用程序则通过扫描<code>/proc</code>目录下的信息实现。</p>
+<div class="fenced fenced-red">
+<p>应用看到的操作系统不过是一组API，以及它们的规约 (specification)，也就是对它们行为的精确定义。</p>
+</div>
+<p>每当应用程序(比如在你编写应用程序的时候)需要完成纯粹计算以外的功能时，就需要借助库函数，最终借助系统调用完成。系统调用的设计并不是唯一的。如果你设计自己的操作系统，你完全可以把<code>printf</code>作为系统调用(虽然这没有很明显的好处)。这门课程主要会讲授一个好的设计——UNIX。</p>
+<p>操作系统不是凭空设计的，而是用来支持各种应用的，所以就让我们先从应用程序学起。</p>
+<div class="fenced fenced-green">
+<h4 id="_3">初学者的困难</h4>
+<p>很多初学编程、Linux、操作系统的同学都会在一开始感到非常绝望：我什么都不知道，不知道做什么，就连错误信息也看不懂。也许你也有类似的困惑。</p>
+<p>总的来说，计算机系统是建立在严格规约(specification)基础上的。所有的东西的行为都有精确的逻辑定义(处于逻辑世界)。和人类世界类似，计算机程序只会响应他听得懂的指令，所以学习的历程主要就是<strong>学习理解规约</strong>。感到困难的原因是面对了一个全新的概念体系，不知从何下手。</p>
+</div>
+<p>特别地，“规约”一个很重要的部分就是操作系统对象的各种约定，有些约定是操作系统规定的(例如文件系统的访问方式，UNIX只有<code>/</code>一个根目录；而Windows则有<code>C:</code>, <code>D:</code>等磁盘)，而有一些则是应用程序规定的(例如<code>DISPLAY</code>环境变量用于决定当前应用所属的屏幕，因此你可以通过设置这个环境变量，在虚拟终端里启动窗口应用)。</p>
+<p>如果你对Linux还不熟悉，你可以先从文件、命令行入手。作为操作系统用户，我们无非就是用一些工具，读取、修改、显示文件，再存储到其他文件中嘛。考虑一下：写作业、打游戏都不过如此。可以试着从一些身边的需求开始——你能知道libc的大小吗？比如你能把分章节下载的操作系统教材pdf文件拼接成一个大文档吗？</p>
+<p>理解文件系统和shell的约定，是打开大门的钥匙。</p>
+<h2 id="_4">应用程序与操作系统的交互</h2>
+<p><code>printf("Hello, World\n");</code>这段代码究竟是怎样运行在计算机系统上的？</p>
+<p>一个程序，纵然拥有独立管理的内存(代码、数据、堆栈……)，但它也只能执行“计算”的任务——无论处理器计算多久，不过是把内存里的数据取出来、算一算、放回去，甚至连终止的行为都是不明确的——从<code>main</code>函数<code>return</code>的行为似乎都没有定义。实际上，编译后的程序的入口地址是<code>_start</code>，会调用<code>__libc_start_main@plt</code>，它会在<code>main</code>返回后做一系列的善后工作(试试<code>man 3 atexit</code>)。这就是为什么不推荐你在程序里使用<code>__</code>开头的标识符了——它们可能覆盖库函数中的标识符，造成混乱。</p>
+<p>所以，库函数一定和操作系统<strong>达成了某种约定</strong>，能够<strong>告诉操作系统自己想完成的工作，然后交给操作系统执行</strong>：这就是<strong>系统调用</strong>。这些约定的设计和实现就构成了操作系统。这门课主要讲解对现今操作系统影响最大的一组设计和实现——UNIX。在理解UNIX以后，你将不难理解其他类型的设计和实现，以及它们在各个方面做出的权衡：</p>
+<ul>
+<li>系统调用直接反应进程想做的操作，直接通过中断(或系统调用)指令陷入操作系统内核执行，执行完毕后返回。这是Linux/UNIX的设计和实现方式。</li>
+<li>系统调用可以只是给一个系统里的另一个进程发送一条消息，等待他把功能执行完后返回。这样的系统只需要进程相关的系统调用——微内核的设计就是如此。macOS, Windows, Fuchsia OS就是这样。</li>
+<li>应用不直接运行在操作系统上。例如Android App运行在Java虚拟机(Android Runtime)上，调用Java实现的Framework API完成各类操作。App会用到很多操作系统提供的功能，但都在JVM的封装之上。</li>
+</ul>
+<p>总之，操作系统会以他认为合适的方式给应用程序提供一个世界运行的概念体系和API接口。</p>
+<p>最后让我们回到<code>printf</code>。<code>printf</code>是库函数的一部分。库函数封装了一些应用程序常用的功能，并且在必要时完成与操作系统的交互。Windows API就是一系列的库函数，而Linux应用程序构建的基础是C标准库和系统调用。<code>printf</code>的绝大部分都不需要操作系统——试想一下，你完全不必借助操作系统就能实现<code>sprintf</code>把格式字符串和参数转换成字符串。但有一点是不能的，试想以下两个大家常用的场景：</p>
+<ul>
+<li><code>./a.out &gt; a.txt</code>能把<code>printf</code>的结果重定向到文件。</li>
+<li><code>./a.out | grep Hello</code>能把<code>printf</code>的结果重定向到另一个程序的输入。</li>
+</ul>
+<p>也就是说，我们在<code>printf</code>的时候，并没有指定输出到哪里，它可能是文件、可能是另一个进程的输入。这就是操作系统、库函数和应用程序之间的约定——它总是输出到<code>stdout</code>，也就是编号为“1”的那个<a href="https://en.wikipedia.org/wiki/File_descriptor">文件描述符</a>。</p>
+<p>这些各式各样的约定(进程、线程、地址空间、文件……)应该怎样设计、如何实现？这就是本课程回答的问题。</p>
+<h2 id="the-unix-shell">The UNIX Shell</h2>
+<p>Shell是我们平常使用最多的程序之一，用于管理操作系统中的其他程序。</p>
+<blockquote>
+<p>在计算机科学中，Shell就是壳(用来区别于Kernel)，是指“为使用者提供操作界面”的软件(命令解析器)。它类似于MS-DOS下的command.com和后来的cmd.exe。它接收用户命令，然后调用相应的应用程序。</p>
+</blockquote>
+<p>因为操作系统提供的是API (甚至是ABI)，一般用户想调用操作系统是非常困难的，必须有一个易于使用的接口。像我们平时用的窗口管理系统就是一个Graphical Shell (它们也是shell哦)。而在计算机系统管理中，UNIX Shell (各种变体，例如bash, zsh)则是使用最广泛的。</p>
+<div class="fenced fenced-green">
+<p>UNIX Shell是一个<strong>命令解释器</strong>，将命令行程序翻译程序系统调用的序列。</p>
+</div>
+<p>例如之前我们看到的<code>./a.out &gt; a.txt</code>，它会被翻译成以下系统调用：</p>
+<ul>
+<li>调用fork() - 创建子进程</li>
+<li>在fork的子进程中，调用open()和dup2()替换标准输出对应的文件描述符</li>
+<li>在fork的父进程中，调用wait()等待子进程的结束</li>
+</ul>
+<h2 id="busyboxunix">Busybox眼中的UNIX操作系统</h2>
+<p>我们已经学写过了很多类型的应用程序，大家编过OJ题、游戏、各种有趣的应用程序。为了更好地了解“应用程序”，我们介绍一个开源项目：<a href="https://busybox.net/">BusyBox: The Swiss Army Knife of Embedded Linux</a>，其中包含了很多操作系统用户需要的应用程序：</p>
+<blockquote>
+<p>BusyBox combines tiny versions of many common UNIX utilities into a single small executable. It provides replacements for most of the utilities you usually find in GNU fileutils, shellutils, etc. The utilities in BusyBox generally have fewer options than their full-featured GNU cousins; however, the options that are included provide the expected functionality and behave very much like their GNU counterparts. BusyBox provides a fairly complete environment for any small or embedded system.</p>
+</blockquote>
+<p>项目中最大的C文件是Shell (<code>shell/ash.c</code>)。我们从这里入手理解“操作系统和应用程序之间的约定”。</p>
+<div class="fenced fenced-green">
+<h4 id="_5">思考题：项目有多少代码？</h4>
+<p>busybox最新的版本有多少个<code>.c</code>文件？一共有多少行代码？最大的文件是哪个？如何画出文件大小的<a href="https://en.wikipedia.org/wiki/Histogram">直方图</a>？这是操作系统的<strong>用户</strong>常用的操作：查看系统里文件的各类信息。操作系统里的应用程序如何为用户提供服务，使得用户能方便地完成他们想做的事？</p>
+<p>Windows的终端用户一般没有这个需求，所以Windows的GUI Shell和应用程序没有直接提供这类功能。但对于程序员来说，这些功能都是很重要的，所以在没有PowerShell的时代，他们更喜欢Linux或者macOS——它们的应用程序能帮我们方便地完成这些操作。</p>
+</div>
+<h3 id="_6">简单的应用程序</h3>
+<p>最简单的应用程序是<code>true</code>和<code>false</code>，它们只有一行代码：</p>
+<div class="codehilite"><pre><span></span><span class="kt">int</span> <span class="nf">true_main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span> <span class="n">UNUSED_PARAM</span><span class="p">,</span> <span class="kt">char</span> <span class="o">**</span><span class="n">argv</span> <span class="n">UNUSED_PARAM</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="k">return</span> <span class="n">EXIT_SUCCESS</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>真的只有一行，<code>true</code>返回<code>EXIT_SUCCESS</code>，<code>false</code>返回<code>EXIT_FAILURE</code>。此外，<code>main</code>函数有两个参数：<code>argc</code>和<code>argv</code>。这就是操作系统在程序之间传递信息之间的一种约定：<strong>程序启动时能从外界传入参数，并且能用返回值表示自己执行的情况</strong>。整数<code>argc</code>表示参数的个数，<code>argv</code>是指向<code>char *</code>的指针，用<code>argv[i]</code>可以取得程序的参数。在Shell中，命令的参数就是这样传递的，比如</p>
+<div class="codehilite"><pre><span></span>find . -name <span class="s2">"*.c"</span> -o -name <span class="s2">"*.h"</span>
+</pre></div>
+
+
+<p>能列出当前目录和子目录下的<code>.c</code>和<code>.h</code>文件。<code>find</code>程序就是从<code>argv</code>中读取这些参数的。你既可以手工解析这些参数，也能用<code>getopt</code>之类的库函数。使用<code>man 3 getopt</code>查看它的用法。搜索互联网能得到更多的信息。</p>
+<div class="fenced fenced-green">
+<h4 id="unused_param">思考题：<code>UNUSED_PARAM</code></h4>
+<p>看起来像是unused parameter的缩写，意思是说这个参数并没有用到。它到底是什么？在哪里定义的？也许你需要RTFM。</p>
+</div>
+<h3 id="coreutils">Coreutils</h3>
+<p><a href="https://en.wikipedia.org/wiki/GNU_Core_Utilities">Coreutils</a>是一组支持系统管理的基本命令行工具，你可以直接在命令行里运行它们(系统里已经安装了GNU Coreutils，busybox对它们做了简化的实现)。<code>true</code>, <code>false</code>都是其中的工具。有些大家已经知道如何实现了，比如<code>expr</code>：</p>
+<div class="codehilite"><pre><span></span>expr <span class="se">\(</span> <span class="m">1</span> + <span class="m">2</span> <span class="se">\)</span> <span class="se">\*</span> <span class="se">\(</span> <span class="m">3</span> + <span class="m">4</span> <span class="se">\)</span>
+</pre></div>
+
+
+<p>其中用到一些库函数，它们都在<code>libbb</code>目录。比如<code>expr_main</code>里会看到<code>bb_error_msg_and_die</code>，它的定义在<code>libbb/verror_msg.c</code>。然后它用了一个相当直接的算法去求解表达式的值。</p>
+<div class="fenced fenced-green">
+<h4 id="_7">思考题：浏览代码</h4>
+<p>阅读代码的时候经常会要找函数、宏定义等。我是怎么知道<code>bb_error_msg_and_die</code>在哪里的？新手在阅读别人代码的时候肯定会遇到很多这样的困难。这时候，你会想到——<strong>我遇到的困难别人一定也遇到过了</strong>。于是在网上用适当的关键字，就能找到更高效阅读代码的方式了。无论是导入IDE还是在命令行里阅读，一定要选取高效、方便的方式。</p>
+</div>
+<p>Coreutils包含了大量实用的程序，它们体现了UNIX和<strong>用户</strong>的一些约定：</p>
+<ul>
+<li>一切皆文件(Everything is a file)。</li>
+<li>每个程序只做一件事，并把事情的方方面面都做好。</li>
+<li>应用之间尽量用文本传递数据。</li>
+</ul>
+<p>程序员们通过随时编写短小的程序，就能在短时间内实现各种自己想要的功能：系统管理、文本处理……也难怪这个设计对用户既友好又不友好了。对于新手来说，UNIX世界是完全懵逼的：一个命令提示符，别无他物了。但对熟悉理解这个概念体系的人，却觉得无比好用。</p>
+<p>从coreutils里最简短的命令开始，你可以看到不同的命令是如何和操作系统交互的，一个好的例子是<code>rm</code>。<code>rm -rf</code>递归删除是个相当有趣的功能，你能找到它的实现在哪里吗？顺便可以看一下<a href="https://www.zhihu.com/question/29438735"><code>rm -rf</code>的一些故事</a>。</p>
+<h3 id="_8">自由探索</h3>
+<p>busybox提供了全面、短小的各种应用程序实现，比如简易的<code>vi</code>——它比你想象得简单地多，就是不断读取输入，然后把输入转换成编辑器的内部状态，再转换成<a href="https://en.wikipedia.org/wiki/ANSI_escape_code">ANSI Escape Code</a>输出。</p>
+<p>欢迎进入UNIX世界！配合系统自带的man pages和代码，你就可以理解所有的应用程序是怎样实现的了。</p>
+<h3 id="_9">一些皆文件</h3>
+<p>约定中很重要的就是“一切皆文件”。</p>
+<p>什么是文件？不过是一些数据(也许是一个数据流，也许是一个数组)，数据能被定位、写入或读出。说到底，在计算机系统中一切东西都是数据——这已经在ICS课上学习过了。所以很自然会联想到一个推论：是不是计算机系统里的一切东西都可以是文件呢？</p>
+<p>答案是肯定的。UNIX就给我们做出了这样的设计。UNIX的文件系统里，不仅有我们传统意义上“磁盘上保存的数据”的这些文件，像系统的设备、运行状态、调节参数……这些都是文件。</p>
+<p>例如，<code>/dev/</code>下就有所有的系统设备。有些是真正的设备，例如<code>/dev/sda</code>就是磁盘。<code>fdisk</code>工具就是读取一个设备文件，然后直接写入它们完成分区的；也有些是模拟的设备，例如<code>/dev/zero</code>永远返回0；<code>/dev/null</code>是一个“黑洞”，把任何输出重定向到<code>/dev/null</code>就能把它们丢弃；<code>/dev/random</code>/<code>/dev/urandom</code>是系统提供的随机数，在x86平台上，这是由软硬件配合实现的，有兴趣的同学可以阅读<a href="https://en.wikipedia.org/wiki/RdRand">RDRAND指令</a>。</p>
+<p>此外，<code>/proc</code>和<code>/sys</code>包含了进程的信息和系统的信息。大家可以阅读<a href="http://lucasvr.gobolinux.org/etc/Killian84-Procfs-USENIX.pdf">1984年的Processes as Files原文</a>，再对比一下今天的procfs和sysfs。</p>
+<p>一切皆文件的好处是显而易见的：<strong>所有用来处理文本的工具，都能应用在操作系统的所有数据中</strong>。所以想获取/修改操作系统的状态，只要在命令行里用常见的find, grep, cat, echo等工具就行了。这也是大家喜欢用UNIX/Linux的原因——我们随时随地都能用自己熟悉的工具玩转整个系统，难道不是一件很酷的事情吗？</p>
+<p>当然它们的坏处也是显而易见的：丢失了类型、结构信息，并且会损失一些效率。因此系统中的设计没有绝对的对与错、好与坏，更多的是体现了为了达成目标作出的取舍。另外关于这两个设计的好与坏，也有<a href="https://www.zhihu.com/question/35745351/answer/334610655">知乎讨论</a>，里面还有关于Worse is Better的讨论。</p>
+    </div>
+  </div>
+</center>
+
+<div class="footer-bottom">
+  <center>
+    <div class="copyright"> © 2019 Yanyan Jiang, All rights reserved </div>
+  </center>
+</div>
+
+<script>
+  $("math").each(function() {
+    var tex = $(this).text();
+    var html = katex.renderToString(tex, {
+      throwOnError: false
+    });
+    $(this).replaceWith(html);
+  });
+</script>
+
+    <script>
+      $("math").each(function() {
+        var tex = $(this).text();
+        var html = katex.renderToString(tex, {
+          throwOnError: false
+        });
+        $(this).replaceWith(html);
+      });
+    </script>
+  
+</body></html>
